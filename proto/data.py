@@ -14,7 +14,6 @@ class data(packet_base):
     SRVC_DATA_UNICAST   = 1
     SRVC_DATA_MULTICAST = 2
     SRVC_DATA_BROADCAST = 3
-    SRVC_DATA_CTRL      = 4
 
     def __init__(self, raw=None, prev=None, **kw):
         packet_base.__init__(self)

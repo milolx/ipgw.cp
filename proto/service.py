@@ -20,7 +20,8 @@ class service(packet_base):
     SRVC_RES_REL  = 2
     SRVC_ACK      = 3
     SRVC_NOTIFY   = 4
-    SRVC_DATA     = 5
+    SRVC_CTRL     = 5
+    SRVC_DATA     = 6
 
     #ip_id = int(time.time())
 
@@ -76,6 +77,8 @@ class service(packet_base):
             self.next = ack(raw=raw[service.MIN_LEN:length], prev=self)
         elif self.type == service.SRVC_NOTIFY:
             self.next = notify(raw=raw[service.MIN_LEN:length], prev=self)
+        elif self.type == service.SRVC_CTRL:
+            self.next = rt_b(raw=raw[service.MIN_LEN:length], prev=self)
         elif self.type == service.SRVC_DATA:
             self.next = data(raw=raw[service.MIN_LEN:length], prev=self)
         elif dlen-service.MIN_LEN < self.len:
