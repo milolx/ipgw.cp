@@ -16,8 +16,9 @@ class ctrl_frm(packet_base):
 
     IPGW_NONE       = 0
     IPGW_PACKET_IN  = 1
-    IPGW_RULE       = 2
-    IPGW_SERVICE    = 3
+    IPGW_RULE_ADD   = 2
+    IPGW_RULE_RM    = 3
+    IPGW_SERVICE    = 4
 
     #ip_id = int(time.time())
 
@@ -68,11 +69,11 @@ class ctrl_frm(packet_base):
             length = dlen   # Clamp to what we've got
         if self.type == ctrl_frm.IPGW_PACKET_IN:
             self.next = pkt_in(raw=raw[ctrl_frm.MIN_LEN:length], prev=self)
-        elif self.type == ctrl_frm.IPGW_RULE:
+        elif self.type == ctrl_frm.IPGW_RULE_ADD or self.type == ctrl_frm.IPGW_RULE_RM:
             self.next = rule(raw=raw[ctrl_frm.MIN_LEN:length], prev=self)
         elif self.type == ctrl_frm.IPGW_SERVICE:
-            self.next = notify(raw=raw[ctrl_frm.MIN_LEN:length], prev=self)
-        elif dlen-ctrl_frm.MIN_LEN < self.len:
+            self.next = service(raw=raw[ctrl_frm.MIN_LEN:length], prev=self)
+        elif dlen - ctrl_frm.MIN_LEN < self.len:
             self.msg('(ctrl_frm parse) warning packet data shorter than len: %u < %u' % (dlen-ctrl_frm.MIN_LEN, self.len))
         else:
             self.next =  raw[ctrl_frm.MIN_LEN:length]
