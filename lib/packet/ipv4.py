@@ -48,7 +48,7 @@ from igmp import *
 
 from packet_base import packet_base
 
-from pox.lib.addresses import IPAddr, IP_ANY, IP_BROADCAST
+from lib.addresses import IPAddr, IP_ANY, IP_BROADCAST
 
 class ipv4(packet_base):
     "IP packet struct"

@@ -19,7 +19,7 @@
 import logging
 lg = logging.getLogger('packet')
 
-from pox.lib.util import initHelper
+from lib.util import initHelper
 
 class packet_base (object):
     """

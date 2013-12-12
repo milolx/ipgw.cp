@@ -20,7 +20,7 @@ class ack(packet_base):
         self.prev = prev
 
         self.result= ack.SRVC_RSLT_NONE
-        self.for_xid = 0    #not used so far
+        self.xid = (int(time.time()) + 1) & 0xffff
 
         if raw is not None:
             self.parse(raw)
@@ -39,10 +39,10 @@ class ack(packet_base):
             self.msg('(ack parse) warning packet ack too short to parse header: ack len %u' % dlen)
             return
 
-        (self.result, self.for_xid, _, _) \
-            = struct.unpack('!BBBB', raw[:ack.MIN_LEN])
+        (self.result, _, self.xid) \
+            = struct.unpack('!BBH', raw[:ack.MIN_LEN])
 
         self.parsed = True
 
     def hdr(self, payload):
-        return struct.pack('!BBBB', self.result, self.for_xid, 0, 0)
+        return struct.pack('!BBH', self.result, 0, self.xid)

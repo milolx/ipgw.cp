@@ -82,4 +82,4 @@ class ctrl_frm(packet_base):
             self.next = raw[ctrl_frm.MIN_LEN:length]
 
     def hdr(self):
-        return struct.pack('!BBH', (self.ver, self.type self.len))
+        return struct.pack('!BBH', (self.ver, self.type, self.len))

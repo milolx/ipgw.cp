@@ -47,7 +47,7 @@ from ethernet import ETHER_BROADCAST
 from ipv4 import IP_ANY
 from ipv4 import IP_BROADCAST
 
-from pox.lib.addresses import IPAddr, EthAddr
+from lib.addresses import IPAddr, EthAddr
 
 from packet_utils       import *
 

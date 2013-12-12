@@ -1,6 +1,7 @@
 # vim: sts=4 sw=4 et
 
 import struct
+import time
 
 from lib.packet.packet_base import packet_base
 from lib.packet.packet_utils import *
@@ -15,7 +16,7 @@ class res(packet_base):
 
         self.prev = prev
 
-        self.xid = 0    # not used
+        self.xid = (int(time.time()) + 1) & 0xffff
         self.site = 0
 
         if raw is not None:
@@ -35,10 +36,11 @@ class res(packet_base):
             self.msg('(res parse) warning packet res too short to parse header: res len %u' % dlen)
             return
 
-        (self.xid, _, self.site) \
-            = struct.unpack('!BBH', raw[:res.MIN_LEN])
+        (self.xid, self.site) \
+            = struct.unpack('!HH', raw[:res.MIN_LEN])
 
         self.parsed = True
 
     def hdr(self):
-        return struct.pack('!BBH', self.xid, 0, self.site)
+        return struct.pack('!HH', self.xid, self.site)
+

@@ -58,9 +58,9 @@ import string
 from packet_utils import *
 
 from packet_base import packet_base
-import pox.lib.util as util
-from pox.lib.util import is_subclass
-from pox.lib.addresses import *
+import lib.util as util
+from lib.util import is_subclass
+from lib.addresses import *
 
 _dhcp_option_unpackers = {}
 

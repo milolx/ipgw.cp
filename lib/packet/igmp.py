@@ -38,7 +38,7 @@
 import struct
 from packet_utils import *
 from packet_base import packet_base
-from pox.lib.addresses import *
+from lib.addresses import *
 
 MEMBERSHIP_QUERY     = 0x11
 MEMBERSHIP_REPORT    = 0x12

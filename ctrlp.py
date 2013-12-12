@@ -7,12 +7,16 @@ from lib.daemon import *
 from lib.vlog import *
 from lib.stream import *
 from lib.poller import *
+from lib import timeval
 
 from proto.ctrl_frm import *
 
+VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | sed -n "/^[^C^K]>/p" | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
+TIMER_INTERVAL      = 1000     # in ms
+#TIMER_INTERVAL      = 10000     # in ms
 
 SOFT_TIMEOUT = 30
 HARD_TIMEOUT = 0
@@ -21,11 +25,13 @@ site_dic = {}
 state_dic = {}
 route_dic = {}
 ctrl_pkt_list = []
+conn_dic = {}
+xid_dic = {}
 
 def enqueue_ctrl_pkt(ctrl):
     ctrl_pkt_list.append(ctrl.pack())
 
-def rule_add(dn, site, idle, hard)
+def rule_add(dn, site, idle, hard):
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_ADD
     ctrl.next = rule();
@@ -37,7 +43,7 @@ def rule_add(dn, site, idle, hard)
     ctrl.len = rule.MIN_LEN
     enqueue_ctrl_pkt(ctrl)
 
-def rule_rm(dn)
+def rule_rm(dn):
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_RM
     ctrl.next = rule();
@@ -94,10 +100,27 @@ def process_srvc_ctrl(rt):
 
 def req_conn(site):
     ctrl = ctrl_frm();
-    ctrl.type = ctrl_frm.IPGW_RULE_RM
-    ctrl.next = res();
-    ctrl.next.site = site
-    ctrl.len = res.MIN_LEN
+    ctrl.type = ctrl_frm.IPGW_SERVICE
+    ctrl.next = service()
+    ctrl.next.type = service.SRVC_RES_REQ
+    ctrl.next.next = res()
+    xid = ctrl.next.next
+    ctrl.next.next.site = site
+    ctrl.next.len = res.MIN_LEN
+    ctrl.len = service.MIN_LEN + ctrl.next.len
+    enqueue_ctrl_pkt(ctrl)
+    return xid
+
+def srvc_ctrl(n):
+    ctrl = ctrl_frm();
+    ctrl.type = ctrl_frm.IPGW_SERVICE
+    ctrl.next = service()
+    ctrl.next.len = service.MIN_LEN
+    ctrl.next.next = rt_b()
+    ctrl.next.next.id = myid
+    ctrl.next.next.set_dest_nets(n)
+    ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
+    ctrl.len = service.MIN_LEN + ctrl.next.len
     enqueue_ctrl_pkt(ctrl)
 
 def lpm_route(ip_pkt):
@@ -108,9 +131,16 @@ def lpm_route(ip_pkt):
         if t in route_dic:
             s = route_dic[t]
             if state_dic[s] == STATE_NOT_CONNECTED:
-                req_conn(s)
+                xid = req_conn(s)
+                xid_dic[xid] = s
+
+                conn_dic[s] = {}
+                conn_dic[s]['timestamp'] = timeval.msec()
+                conn_dic[s]['list'] = []
+                conn_dic[s]['list'].append((ip_pkt,t))
+                state_dic[site] = STATE_IN_PROGRESS
             elif state_dic[s] == STATE_IN_PROGRESS:
-                pass
+                conn_dic[s]['list'].append((ip_pkt,t))
             elif state_dic[s] == STATE_CONNECTED:
                 rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
             else:
@@ -128,9 +158,29 @@ def process_packet_in(inp):
     lpm_route(ip_pkt)
 
 def process_srvc_ack(a):
-    pass
+    if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
+        print "Err:ack pkt is unable to be parsed"
+        return
+    if not a.xid in xid_dic:
+        print "Err:xid is not expected(%d)" % a.xid
+        return
+
+    xid = a.xid
+    site = xid_dic[xid]
+    if a.result == ack.SRVC_RSLT_ERR:
+        print "Warn: conn to site(%d) failed" % site
+        state_dic[site] = STATE_NOT_CONNECTED
+    elif a.result == ack.SRVC_RSLT_OK:
+        for pkt,t in conn_dic[site]['list']:
+            rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
+        state_dic[site] == STATE_CONNECTED
+    else:
+        print "Err:ack result's unknown(%d)" % a.result
+    xid_dic.remove(xid)
+    conn_dic.remove(site)
 
 def process_srvc_notify(n):
+    print "Warn: process_srvc_notify not implemente yet"
     pass
 
 def process_in(ctrl):
@@ -147,6 +197,24 @@ def process_in(ctrl):
     else:
         print "Err: should not recv this type:%d" % ctrl.type
 
+def process_timer():
+    proc = subprocess.Popen(VTYSH_ROUTE_CMD, stdout=subprocess.PIPE, shell=True)
+    out,err = proc.communicate()
+    if not '/' in out:
+        print "Warn: no route found"
+        return
+    nets = out.split("\n")
+    reachable_set = set()
+    for net in nets:
+        ip,mask = net.split("/")
+        reachable_set.add((IPAddr(ip), mask))
+    srvc_ctrl(reachable_set)
+
+def send_out_ququed_pkt(conn):
+    for p in ctrl_pkt_list:
+        conn.send(p)
+        ctrl_pkt_list.remove(p)
+
 def main():
     lib.vlog.Vlog.init()
     #set_detach()
@@ -159,10 +227,11 @@ def main():
     connected = False
     pkt = b''
     exp_len = ctrl_frm.MIN_LEN
+    timer_expire = timeval.msec() + TIMER_INTERVAL
+    poller.timer_wait(TIMER_INTERVAL)
     while True:
         if not connected:
             error, conn = server.accept()
-            print conn
             if conn == None:
                 server.wait(poller)
             else:
@@ -179,7 +248,18 @@ def main():
                 pkt = b''
                 exp_len = ctrl_frm.MIN_LEN
                 process_in(ctrl)
+
             conn.recv_wait(poller)
+            send_out_ququed_pkt(conn)
+
+        if timeval.msec() >= timer_expire:
+            timer_expire = timeval.msec() + TIMER_INTERVAL
+            poller.timer_wait(TIMER_INTERVAL)
+            process_timer()
+
+        if connected:
+            send_out_ququed_pkt(conn)
+
         poller.block()
         print "unblocked..."
     

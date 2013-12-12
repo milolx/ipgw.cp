@@ -43,8 +43,8 @@ import new
 from packet_utils import *
 from packet_base import packet_base
 
-from pox.lib.addresses import IPAddr6,EthAddr
-from pox.lib.util import hexdump, init_helper
+from lib.addresses import IPAddr6,EthAddr
+from lib.util import hexdump, init_helper
 
 # Errors
 TYPE_DEST_UNREACH   = 1

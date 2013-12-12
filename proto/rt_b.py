@@ -3,15 +3,17 @@
 #   +++++++++++++++++++++++++++++
 # 0 |  Ver |  Num |  StationID  |
 #   +------+------+------+------+
-# 4 |     Dest Network IP1      |
+# 4 | Payload len |     Pad     |
 #   +------+------+------+------+
-# 8 | Mask1+        Pad         |
+# 8 |     Dest Network IP1      |
 #   +------+------+------+------+
-#12 |     Dest Network IP2      |
+#12 | Mask1|        Pad         |
 #   +------+------+------+------+
-#16 | Mask2+        Pad         |
+#16 |     Dest Network IP2      |
 #   +------+------+------+------+
-#20 |          ...              |
+#20 | Mask2|        Pad         |
+#   +------+------+------+------+
+#24 |          ...              |
 
 import struct
 
@@ -21,7 +23,7 @@ from lib.packet.packet_utils import *
 class rt_b(packet_base):
     "route broadcast packet struct"
 
-    MIN_LEN = 4
+    MIN_LEN = 8
     VER = 1
 
     def __init__(self, raw=None, prev=None, **kw):
@@ -32,6 +34,7 @@ class rt_b(packet_base):
         self.ver = rt_b.VER
         self.num = 0
         self.id = 0
+        self.len = 0
         self.dn = set()
 
         if raw is not None:
@@ -40,7 +43,7 @@ class rt_b(packet_base):
         self._init(kw)
 
     def __str__(self):
-        s = '[RTB: v:%02x n:%s i:%s]' % (self.ver, self.num, self.id)
+        s = '[RTB: v:%02x n:%s i:%s l:%s]' % (self.ver, self.num, self.id, self.len)
         for k in self.dn:
             dest, mask = k
             s += '    (%s/%s)' % (dest, mask)
@@ -54,8 +57,8 @@ class rt_b(packet_base):
             self.msg('(rt_b parse) warning packet rt_b too short to parse header: rt_b len %u' % dlen)
             return
 
-        (self.ver, self.num, self.id) \
-            = struct.unpack('!BBH', raw[:rt_b.MIN_LEN])
+        (self.ver, self.num, self.id, self.len) \
+            = struct.unpack('!BBHH', raw[:rt_b.MIN_LEN])
         if dlen < rt_b.MIN_LEN+self.num*8:
             self.msg('(rt_b parse) warning packet rt_b too short to parse dest nets: rt_b::num %u' % self.num)
             return
@@ -67,24 +70,35 @@ class rt_b(packet_base):
         self.parsed = True
 
     def hdr(self):
-        return struct.pack('!BBH', self.ver, self.num, self.id)
+        self.num = len(self.dn)
+        return struct.pack('!BBHHH', self.ver, self.num, self.id, self.len, 0)
 
-    @property
-    def payload (self):
+    def set_dest_nets(self, dn):
+        self.dn = dn
+        self.form_payload(self):
+
+    def form_payload(self):
+        self.num = len(self.dn)
+        self.len = self.num*8
+
         p = b''
         for k in self.dn:
             dest, mask = k
             p += struct.pack('LBBBB', dest, mask, 0, 0, 0)
+        self.next = p
+
+        self.parsed = True
+
         return p
 
     def add(self, ip, mask):
-        if isinstance(ip, IPAddr):
+        if not isinstance(ip, IPAddr):
             ip = IPAddr(ip)
         self.dn.add((ip,mask))
         self.num += 1
 
     def remove(self, ip, mask):
-        if isinstance(ip, IPAddr):
+        if not isinstance(ip, IPAddr):
             ip = IPAddr(ip)
         self.dn.remove((ip,mask))
         self.num -= 1

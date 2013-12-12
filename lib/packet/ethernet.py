@@ -26,7 +26,7 @@ import struct
 from packet_base import packet_base
 from packet_utils import ethtype_to_str
 
-from pox.lib.addresses import *
+from lib.addresses import *
 
 ETHER_ANY            = EthAddr(b"\x00\x00\x00\x00\x00\x00")
 ETHER_BROADCAST      = EthAddr(b"\xff\xff\xff\xff\xff\xff")

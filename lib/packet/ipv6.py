@@ -54,8 +54,8 @@ from icmpv6 import *
 
 from packet_base import packet_base
 
-from pox.lib.addresses import IPAddr6
-from pox.lib.util import init_helper
+from lib.addresses import IPAddr6
+from lib.util import init_helper
 
 
 _extension_headers = {}

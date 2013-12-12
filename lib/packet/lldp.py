@@ -63,8 +63,8 @@ import time
 from packet_utils import *
 
 from packet_base import packet_base
-from pox.lib.addresses import EthAddr
-from pox.lib.util import initHelper
+from lib.addresses import EthAddr
+from lib.util import initHelper
 
 import logging
 lg = logging.getLogger('packet')
