@@ -53,5 +53,5 @@ class pkt_in(packet_base):
         self.payload = raw[pkt_in.MIN_LEN:]
 
 
-    def hdr(self):
+    def hdr(self, payload):
         return struct.pack('!LHHHBB', self.buf_id, self.len, self.in_port, self.reason, 0, 0)

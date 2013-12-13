@@ -53,5 +53,5 @@ class data(packet_base):
         self.payload = raw[data.MIN_LEN:]
 
 
-    def hdr(self):
+    def hdr(self, payload):
         return struct.pack('!BBBBHH', self.type, 0, 0, 0, self.len, self.to_site)

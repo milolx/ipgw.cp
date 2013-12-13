@@ -7,16 +7,19 @@ from lib.daemon import *
 from lib.vlog import *
 from lib.stream import *
 from lib.poller import *
+from lib.socket_util import *
 from lib import timeval
 
 from proto.ctrl_frm import *
+from proto.service import *
 
 VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | sed -n "/^[^C^K]>/p" | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
-TIMER_INTERVAL      = 1000     # in ms
-#TIMER_INTERVAL      = 10000     # in ms
+TIMER_INTERVAL      = 10000     # in ms
+PARSE_HDR           = 0
+PARSE_BODY          = 1
 
 SOFT_TIMEOUT = 30
 HARD_TIMEOUT = 0
@@ -194,6 +197,8 @@ def process_in(ctrl):
             process_srvc_notify(s.next)
         elif s.type == service.SRVC_CTRL:
             process_srvc_ctrl(s.next)
+        else:
+            print "Err: cant parse this kind of service pkt:%d" % s.type
     else:
         print "Err: should not recv this type:%d" % ctrl.type
 
@@ -227,6 +232,7 @@ def main():
     connected = False
     pkt = b''
     exp_len = ctrl_frm.MIN_LEN
+    parse_state = PARSE_HDR
     timer_expire = timeval.msec() + TIMER_INTERVAL
     poller.timer_wait(TIMER_INTERVAL)
     while True:
@@ -238,28 +244,40 @@ def main():
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
-            pkt += data
-            if len(pkt) == ctrl_frm.MIN_LEN:
-                hdr = ctrl_frm(pkt)
-                if hdr.parsed:
-                    exp_len = ctrl_frm.MIN_LEN + hdr.len
-            elif len(pkt) == exp_len:
-                ctrl = ctrl_frm(pkt)
+            print "exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data))
+            if (error, data) == (0, ""):
+                conn.close()
+                connected = False
                 pkt = b''
                 exp_len = ctrl_frm.MIN_LEN
-                process_in(ctrl)
+                continue
+            elif len(data) > 0:
+                pkt += data
+                if len(pkt) == exp_len:
+                    if parse_state == PARSE_HDR:
+                        hdr = ctrl_frm(pkt)
+                        if hdr.parsed:
+                            exp_len = ctrl_frm.MIN_LEN + hdr.len
+                            parse_state = PARSE_BODY
+                    elif parse_state == PARSE_BODY:
+                        ctrl = ctrl_frm(pkt)
+                        process_in(ctrl)
 
-            conn.recv_wait(poller)
-            send_out_ququed_pkt(conn)
+                        pkt = b''
+                        exp_len = ctrl_frm.MIN_LEN
+                        parse_state = PARSE_HDR
+
+                conn.recv_wait(poller)
+                send_out_ququed_pkt(conn)
 
         if timeval.msec() >= timer_expire:
             timer_expire = timeval.msec() + TIMER_INTERVAL
-            poller.timer_wait(TIMER_INTERVAL)
             process_timer()
 
         if connected:
             send_out_ququed_pkt(conn)
 
+        poller.timer_wait(1000)
         poller.block()
         print "unblocked..."
     

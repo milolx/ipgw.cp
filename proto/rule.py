@@ -52,5 +52,5 @@ class rule(packet_base):
 
         self.parsed = True
 
-    def hdr(self):
-        return struct.pack('!LBBBBHBBHH', self.ip, self.mask, 0, 0, 0, self.site, 0, 0, self.idle_to, self.hard_to)
+    def hdr(self, payload):
+        return struct.pack('!LBBBBHBBHH', self.ip.toUnsigned(), self.mask, 0, 0, 0, self.site, 0, 0, self.idle_to, self.hard_to)

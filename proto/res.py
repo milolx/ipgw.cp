@@ -41,6 +41,6 @@ class res(packet_base):
 
         self.parsed = True
 
-    def hdr(self):
+    def hdr(self, payload):
         return struct.pack('!HH', self.xid, self.site)
 

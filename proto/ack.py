@@ -1,6 +1,7 @@
 # vim: sts=4 sw=4 et
 
 import struct
+import time
 
 from lib.packet.packet_base import packet_base
 from lib.packet.packet_utils import *
@@ -8,7 +9,7 @@ from lib.packet.packet_utils import *
 class ack(packet_base):
     "ack packet struct"
 
-    MIN_LEN = 8
+    MIN_LEN = 4
 
     SRVC_RSLT_NONE  = 0
     SRVC_RSLT_OK    = 1
@@ -28,7 +29,7 @@ class ack(packet_base):
         self._init(kw)
 
     def __str__(self):
-        s = '[ACK: r:%02x x:%02x]' % (self.result, self.for_xid)
+        s = '[ACK: r:%02x x:%04x]' % (self.result, self.xid)
         return s
 
     def parse(self, raw):

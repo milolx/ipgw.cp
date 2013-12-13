@@ -43,7 +43,7 @@ class service(packet_base):
     def __str__(self):
         s = "[SERVICE (v:%02x t:%s l:%s)]" % (
             self.ver,
-            self.type
+            self.type,
             self.len)
 
         return s
@@ -60,7 +60,7 @@ class service(packet_base):
         (self.ver, self.type, self.len) \
              = struct.unpack('!BBH', raw[:service.MIN_LEN])
 
-        if self.v != service.VER:
+        if self.ver != service.VER:
             self.msg('(service parse) warning version %u not exp(%u)' % (self.v, service.VER))
             return
 
@@ -89,5 +89,5 @@ class service(packet_base):
         if isinstance(self.next, packet_base) and not self.next.parsed:
             self.next = raw[service.MIN_LEN:length]
 
-    def hdr(self):
-        return struct.pack('!BBH', (self.ver, self.type self.len))
+    def hdr(self, payload):
+        return struct.pack('!BBH', self.ver, self.type, self.len)

@@ -69,7 +69,7 @@ class rt_b(packet_base):
 
         self.parsed = True
 
-    def hdr(self):
+    def hdr(self, payload):
         self.num = len(self.dn)
         return struct.pack('!BBHHH', self.ver, self.num, self.id, self.len, 0)
 
