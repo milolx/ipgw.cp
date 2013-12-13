@@ -2,6 +2,9 @@
 # vim: sts=4 sw=4 et
 
 import subprocess
+import logging
+#logging.basicConfig(filename='debug.log',level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
 
 from lib.daemon import *
 from lib.vlog import *
@@ -191,14 +194,17 @@ def process_in(ctrl):
         process_packet_in(ctrl.next)
     elif ctrl.type == ctrl_frm.IPGW_SERVICE:
         s = ctrl.next
-        if s.type == service.SRVC_ACK:
-            process_srvc_ack(s.next)
-        elif s.type == service.SRVC_NOTIFY:
-            process_srvc_notify(s.next)
-        elif s.type == service.SRVC_CTRL:
-            process_srvc_ctrl(s.next)
+        if isinstance(s, service):
+            if s.type == service.SRVC_ACK:
+                process_srvc_ack(s.next)
+            elif s.type == service.SRVC_NOTIFY:
+                process_srvc_notify(s.next)
+            elif s.type == service.SRVC_CTRL:
+                process_srvc_ctrl(s.next)
+            else:
+                print "Err: cant parse this kind of service pkt:%d" % s.type
         else:
-            print "Err: cant parse this kind of service pkt:%d" % s.type
+            print "Err: cant parse service payload"
     else:
         print "Err: should not recv this type:%d" % ctrl.type
 
