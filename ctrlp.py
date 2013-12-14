@@ -5,6 +5,7 @@ import subprocess
 import logging
 #logging.basicConfig(filename='debug.log',level=logging.DEBUG)
 logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger('ctrlplane')
 
 from lib.daemon import *
 from lib.vlog import *
@@ -90,7 +91,7 @@ def add_route(s, id):
 
 def process_srvc_ctrl(rt):
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
-        print "Err:route table data is unable to be parsed"
+        log.error("route table data is unable to be parsed")
         return
     if rt.id in site_dic:
         add_set = rt.dn - site_dic[rt.id]
@@ -150,43 +151,43 @@ def lpm_route(ip_pkt):
             elif state_dic[s] == STATE_CONNECTED:
                 rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
             else:
-                print "Err: unknown site state"
+                log.error("unknown site state")
             return
 
 def process_packet_in(inp):
     if not isinstance(inp, packet_base) or (isinstance(inp, packet_base) and not inp.parsed):
-        print "Err:pkt_in packet is unable to be parsed"
+        log.error("pkt_in packet is unable to be parsed")
         return
     ip_pkt = ipv4(inp.payload)
     if ip_pkt.parsed:
-        print "Err:pkt_in data is not a ipv4 packet"
+        log.error("pkt_in data is not a ipv4 packet")
         return
     lpm_route(ip_pkt)
 
 def process_srvc_ack(a):
     if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
-        print "Err:ack pkt is unable to be parsed"
+        log.error("ack pkt is unable to be parsed")
         return
     if not a.xid in xid_dic:
-        print "Err:xid is not expected(%d)" % a.xid
+        log.error("xid is not expected(%d)" % a.xid)
         return
 
     xid = a.xid
     site = xid_dic[xid]
     if a.result == ack.SRVC_RSLT_ERR:
-        print "Warn: conn to site(%d) failed" % site
+        log.warning("conn to site(%d) failed" % site)
         state_dic[site] = STATE_NOT_CONNECTED
     elif a.result == ack.SRVC_RSLT_OK:
         for pkt,t in conn_dic[site]['list']:
             rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
         state_dic[site] == STATE_CONNECTED
     else:
-        print "Err:ack result's unknown(%d)" % a.result
+        log.error("ack result's unknown(%d)" % a.result)
     xid_dic.remove(xid)
     conn_dic.remove(site)
 
 def process_srvc_notify(n):
-    print "Warn: process_srvc_notify not implemente yet"
+    log.warning("process_srvc_notify not implemente yet")
     pass
 
 def process_in(ctrl):
@@ -202,17 +203,17 @@ def process_in(ctrl):
             elif s.type == service.SRVC_CTRL:
                 process_srvc_ctrl(s.next)
             else:
-                print "Err: cant parse this kind of service pkt:%d" % s.type
+                log.error("cant parse this kind of service pkt:%d" % s.type)
         else:
-            print "Err: cant parse service payload"
+            log.error("cant parse service payload")
     else:
-        print "Err: should not recv this type:%d" % ctrl.type
+        log.error("should not recv this type:%d" % ctrl.type)
 
 def process_timer():
     proc = subprocess.Popen(VTYSH_ROUTE_CMD, stdout=subprocess.PIPE, shell=True)
     out,err = proc.communicate()
     if not '/' in out:
-        print "Warn: no route found"
+        log.warning("no route found")
         return
     nets = out.split("\n")
     reachable_set = set()
@@ -250,7 +251,7 @@ def main():
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
-            print "exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data))
+            log.debug("exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data)))
             if (error, data) == (0, ""):
                 conn.close()
                 connected = False
@@ -285,7 +286,7 @@ def main():
 
         poller.timer_wait(1000)
         poller.block()
-        print "unblocked..."
+        log.debug("unblocked...")
     
 
 if __name__ == '__main__':
