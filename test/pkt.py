@@ -9,6 +9,7 @@ from lib.daemon import *
 from lib.vlog import *
 from lib.stream import *
 from lib.poller import *
+from lib.dbg import *
 from lib import timeval
 
 from proto.ctrl_frm import *
@@ -23,7 +24,7 @@ def main():
     daemonize_start()
     daemonize_complete()
 
-    '''ctrl = ctrl_frm();
+    ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
     ctrl.next.type = service.SRVC_CTRL
@@ -38,8 +39,9 @@ def main():
     print ctrl.next.next.len
     ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
-    print ctrl.len'''
+    print ctrl.len
 
+    '''
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
@@ -48,7 +50,7 @@ def main():
     ctrl.next.next.to_site = 1234
     ctrl.next.len = data.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
-    print ctrl.len
+    '''
 
     poller = Poller()
     connected = False
@@ -62,9 +64,11 @@ def main():
                 connected = True
         if connected:
             e = conn.send(ctrl.pack())
-            hex_chars = map(hex, map(ord,ctrl.pack()))
-            print "pkt->%s",hex_chars
-            print "send out->%d"%e
+            print "len=%d"%len(ctrl.pack())
+            hexdump(ctrl.pack())
+            #hex_chars = map(hex, map(ord,ctrl.pack()))
+            #print "pkt->%s",hex_chars
+            #print "send out->%d"%e
             if e < 0:
                 print "err->%d"%e
 
