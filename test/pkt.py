@@ -23,15 +23,32 @@ def main():
     daemonize_start()
     daemonize_complete()
 
+    '''ctrl = ctrl_frm();
+    ctrl.type = ctrl_frm.IPGW_SERVICE
+    ctrl.next = service()
+    ctrl.next.type = service.SRVC_CTRL
+    ctrl.next.next = rt_b()
+    ctrl.next.next.site = 1234
+    dn = set()
+    dn.add((IPAddr('172.16.0.0'),16))
+    dn.add((IPAddr('10.6.0.0'),18))
+    dn.add((IPAddr('192.168.1.0'),24))
+    ctrl.next.next.set_dest_nets(dn)
+    print ctrl.next.next
+    print ctrl.next.next.len
+    ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
+    ctrl.len = service.MIN_LEN + ctrl.next.len
+    print ctrl.len'''
+
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
-    ctrl.next.type = service.SRVC_ACK
-    ctrl.next.next = ack()
-    xid = ctrl.next.next
-    ctrl.next.next.result = ack.SRVC_RSLT_OK
-    ctrl.next.len = ack.MIN_LEN
+    ctrl.next.type = service.SRVC_DATA
+    ctrl.next.next = data()
+    ctrl.next.next.to_site = 1234
+    ctrl.next.len = data.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
+    print ctrl.len
 
     poller = Poller()
     connected = False
@@ -45,8 +62,11 @@ def main():
                 connected = True
         if connected:
             e = conn.send(ctrl.pack())
+            hex_chars = map(hex, map(ord,ctrl.pack()))
+            print "pkt->%s",hex_chars
+            print "send out->%d"%e
             if e < 0:
-                print e
+                print "err->%d"%e
 
         #conn.recv_wait(poller)
 

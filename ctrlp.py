@@ -93,17 +93,17 @@ def process_srvc_ctrl(rt):
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
         log.error("route table data is unable to be parsed")
         return
-    if rt.id in site_dic:
-        add_set = rt.dn - site_dic[rt.id]
-        rm_set = site_dic[rt.id] - rt.dn
+    if rt.site in site_dic:
+        add_set = rt.dn - site_dic[rt.site]
+        rm_set = site_dic[rt.site] - rt.dn
         if len(add_set) > 0 or len(rm_set) > 0:
-            site_dic[rt.id] = rt.dn
-        rm_route(rm_set, rt.id)
-        add_route(add_set, rt.id)
+            site_dic[rt.site] = rt.dn
+        rm_route(rm_set, rt.site)
+        add_route(add_set, rt.site)
     else:
-        site_dic[rt.id] = rt.dn
-        add_route(rt.dn, rt.id)
-        state_dic[rt.id] = STATE_NOT_CONNECTED
+        site_dic[rt.site] = rt.dn
+        add_route(rt.dn, rt.site)
+        state_dic[rt.site] = STATE_NOT_CONNECTED
 
 def req_conn(site):
     ctrl = ctrl_frm();
@@ -258,6 +258,7 @@ def main():
                 connected = False
                 pkt = b''
                 exp_len = ctrl_frm.MIN_LEN
+                parse_state = PARSE_HDR
                 continue
             elif len(data) > 0:
                 pkt += data

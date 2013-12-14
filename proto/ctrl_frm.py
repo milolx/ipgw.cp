@@ -5,6 +5,8 @@ from pkt_in import *
 from rule import *
 from ctrl_frm import *
 from service import *
+from notify import *
+from rt_b import *
 
 from lib.packet.packet_base import packet_base
 from lib.packet.packet_utils import *
@@ -58,7 +60,7 @@ class ctrl_frm(packet_base):
              = struct.unpack('!BBH', raw[:ctrl_frm.MIN_LEN])
 
         if self.ver != ctrl_frm.VER:
-            self.msg('(ctrl_frm parse) warning version %u not exp(%u)' % (self.v, ctrl_frm.VER))
+            self.msg('(ctrl_frm parse) warning version %u not exp(%u)' % (self.ver, ctrl_frm.VER))
             return
 
         # At this point, we are reasonably certain that we have an ctrl_frm

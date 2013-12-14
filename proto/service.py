@@ -5,6 +5,7 @@ from res import *
 from ack import *
 from notify import *
 from data import *
+from rt_b import *
 
 from lib.packet.packet_base import packet_base
 from lib.packet.packet_utils import *

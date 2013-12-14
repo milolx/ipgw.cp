@@ -5,8 +5,8 @@ import struct
 from lib.packet.packet_base import packet_base
 from lib.packet.packet_utils import *
 
-class nodify(packet_base):
-    "nodify packet struct"
+class notify(packet_base):
+    "notify packet struct"
 
     MIN_LEN = 4
 
@@ -20,7 +20,7 @@ class nodify(packet_base):
         self.prev = prev
 
         self.site = 0
-        self.type = nodify.SRVC_NOTIFY_NONE
+        self.type = notify.SRVC_NOTIFY_NONE
 
         if raw is not None:
             self.parse(raw)
@@ -35,12 +35,12 @@ class nodify(packet_base):
         assert isinstance(raw, bytes)
         self.raw = raw
         dlen = len(raw)
-        if dlen < nodify.MIN_LEN:
-            self.msg('(nodify parse) warning packet nodify too short to parse header: nodify len %u' % dlen)
+        if dlen < notify.MIN_LEN:
+            self.msg('(notify parse) warning packet notify too short to parse header: notify len %u' % dlen)
             return
 
         (self.site, self.type, _) \
-            = struct.unpack('!HBB', raw[:nodify.MIN_LEN])
+            = struct.unpack('!HBB', raw[:notify.MIN_LEN])
 
         self.parsed = True
 
