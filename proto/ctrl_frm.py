@@ -45,7 +45,7 @@ class ctrl_frm(packet_base):
 
         return s
 
-    def parse(self, raw):
+    def parse(self, raw, headOnly = False):
         assert isinstance(raw, bytes)
         self.next = None # In case of unfinished parsing
         self.raw = raw
@@ -66,6 +66,11 @@ class ctrl_frm(packet_base):
         self.parsed = True
 
         length = self.len + ctrl_frm.MIN_LEN
+
+        if headOnly:
+            self.next =  raw[ctrl_frm.MIN_LEN:length]
+            return
+
         if length > dlen:
             length = dlen   # Clamp to what we've got
         if self.type == ctrl_frm.IPGW_PACKET_IN:

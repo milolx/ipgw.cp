@@ -236,6 +236,7 @@ def main():
 
     poller = Poller()
     error, server = PassiveStream.open("punix:/tmp/ctrl.sock")
+    hdr = ctrl_frm()
     connected = False
     pkt = b''
     exp_len = ctrl_frm.MIN_LEN
@@ -262,7 +263,7 @@ def main():
                 pkt += data
                 if len(pkt) == exp_len:
                     if parse_state == PARSE_HDR:
-                        hdr = ctrl_frm(pkt)
+                        hdr.parse(pkt, headOnly=True)
                         if hdr.parsed:
                             exp_len = ctrl_frm.MIN_LEN + hdr.len
                             parse_state = PARSE_BODY
