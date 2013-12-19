@@ -73,6 +73,7 @@ class rt_b(packet_base):
 
     def hdr(self, payload):
         self.num = len(self.dn)
+        self.form_payload()
         return struct.pack('!BBHHH', self.ver, self.num, self.site, self.len, 0)
 
     def set_dest_nets(self, dn):

@@ -79,14 +79,14 @@ def rm_route(s, id):
         # dp route will be removed when soft_to reach
         if not find:
             del route_dic[k]
-            cmd = "ip route del %s/%d dev tun0" % (k[0], k[1])
+            cmd = "ip route del %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
 
 def add_route(s, id):
     for k in s:
         if not k in route_dic:
             route_dic[k] = id
-            cmd = "ip route add %s/%d dev tun0" % (k[0], k[1])
+            cmd = "ip route add %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
 
 def process_srvc_ctrl(rt):
@@ -210,7 +210,10 @@ def process_in(ctrl):
         log.error("should not recv this type:%d" % ctrl.type)
 
 def process_timer():
-    proc = subprocess.Popen(VTYSH_ROUTE_CMD, stdout=subprocess.PIPE, shell=True)
+    proc = subprocess.Popen(VTYSH_ROUTE_CMD,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                shell=True)
     out,err = proc.communicate()
     if not '/' in out:
         log.warning("no route found")
@@ -252,14 +255,16 @@ def main():
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
-            log.debug("exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data)))
+            if len(data) > 0:
+                log.debug("exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data)))
             if (error, data) == (0, ""):
+                log.warning("connection closed...")
                 conn.close()
                 connected = False
                 pkt = b''
                 exp_len = ctrl_frm.MIN_LEN
                 parse_state = PARSE_HDR
-                continue
+                poller.immediate_wake()
             elif len(data) > 0:
                 pkt += data
                 if len(pkt) == exp_len:
@@ -268,6 +273,13 @@ def main():
                         if hdr.parsed:
                             exp_len = ctrl_frm.MIN_LEN + hdr.len
                             parse_state = PARSE_BODY
+                        else:
+                            log.warning("parse hdr failed. close conn...")
+                            conn.close()
+                            connected = False
+                            pkt = b''
+                            exp_len = ctrl_frm.MIN_LEN
+                            parse_state = PARSE_HDR
                     elif parse_state == PARSE_BODY:
                         ctrl = ctrl_frm(pkt)
                         process_in(ctrl)
@@ -275,6 +287,8 @@ def main():
                         pkt = b''
                         exp_len = ctrl_frm.MIN_LEN
                         parse_state = PARSE_HDR
+
+                    poller.immediate_wake()
 
                 conn.recv_wait(poller)
                 send_out_ququed_pkt(conn)
@@ -288,7 +302,6 @@ def main():
 
         poller.timer_wait(1000)
         poller.block()
-        log.debug("unblocked...")
     
 
 if __name__ == '__main__':
