@@ -47,7 +47,7 @@ def main():
     ctrl.next = service()
     ctrl.next.type = service.SRVC_DATA
     ctrl.next.next = data()
-    ctrl.next.next.to_site = 1234
+    ctrl.next.next.site = 1234
     ctrl.next.len = data.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
     '''

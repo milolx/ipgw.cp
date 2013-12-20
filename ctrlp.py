@@ -252,6 +252,7 @@ def main():
             if conn == None:
                 server.wait(poller)
             else:
+                log.warning("connection established...")
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))

@@ -12,6 +12,8 @@ from lib.stream import *
 from lib.poller import *
 from lib.dbg import *
 from lib import timeval
+from lib.packet.ipv4 import *
+from lib.packet.udp import *
 
 from proto.ctrl_frm import *
 from proto.service import *
@@ -76,13 +78,30 @@ def main():
     print ctrl.len
     '''
 
+    p = ipv4()
+    p.protocol = ipv4.UDP_PROTOCOL
+    p.srcip = IPAddr("10.0.0.1")
+    p.dstip = IPAddr("10.0.0.2")
+    p.next = udp()
+    p.next.srcport = 6666
+    p.next.dstport = 6667
+    p.next.next = b'abcdefg'
+    srvc = service()
+    srvc.type = service.SRVC_DATA
+    srvc.next = data()
+    srvc.next.type = data.SRVC_DATA_UNICAST
+    srvc.next.len = len(p.pack())
+    srvc.next.site = 1234
+    srvc.next.next = p
+    srvc.len = data.MIN_LEN + srvc.next.len
+
     '''
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
     ctrl.next.type = service.SRVC_DATA
     ctrl.next.next = data()
-    ctrl.next.next.to_site = 1234
+    ctrl.next.next.site = 1234
     ctrl.next.len = data.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
     '''
@@ -91,10 +110,11 @@ def main():
     srvc = service()
     srvc.type = service.SRVC_DATA
     srvc.next = data()
-    srvc.next.to_site = 1234
+    srvc.next.site = 1234
     srvc.len = data.MIN_LEN + srvc.next.len
     '''
 
+    '''
     srvc = service()
     srvc.type = service.SRVC_CTRL
     srvc.next = rt_b()
@@ -103,6 +123,39 @@ def main():
     srvc.next.add("10.128.0.0",9)
     srvc.next.form_payload()
     srvc.len = rt_b.MIN_LEN + srvc.next.len
+    '''
+    '''
+    srvc = service()
+    srvc.type = service.SRVC_NOTIFY
+    srvc.next = notify()
+    srvc.next.site = 1234
+    srvc.next.type = notify.SRVC_NOTIFY_LOGOUT
+    srvc.len = notify.MIN_LEN
+    '''
+
+    '''
+    srvc = service()
+    srvc.type = service.SRVC_RES_REQ
+    srvc.next = res()
+    srvc.next.site = 1234
+    srvc.len = notify.MIN_LEN
+    '''
+
+    '''
+    srvc = service()
+    srvc.type = service.SRVC_RES_REL
+    srvc.next = res()
+    srvc.next.site = 1234
+    srvc.len = notify.MIN_LEN
+    '''
+
+    '''
+    srvc = service()
+    srvc.type = service.SRVC_ACK
+    srvc.next = ack()
+    srvc.next.result = ack.SRVC_RSLT_OK
+    srvc.len = notify.MIN_LEN
+    '''
 
     poller = Poller()
     connected = False
