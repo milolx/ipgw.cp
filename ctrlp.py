@@ -13,6 +13,7 @@ from lib.stream import *
 from lib.poller import *
 from lib.socket_util import *
 from lib.util import *
+from lib.packet.ipv4 import *
 from lib import timeval
 
 from proto.ctrl_frm import *
@@ -20,7 +21,7 @@ from proto.service import *
 
 MYID                = 1
 
-VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
+VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "inactive" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
@@ -115,7 +116,7 @@ def req_conn(site):
     ctrl.next = service()
     ctrl.next.type = service.SRVC_RES_REQ
     ctrl.next.next = res()
-    xid = ctrl.next.next
+    xid = ctrl.next.next.xid
     ctrl.next.next.site = site
     ctrl.next.len = res.MIN_LEN
     ctrl.len = service.MIN_LEN + ctrl.next.len
@@ -137,7 +138,7 @@ def srvc_ctrl(n):
 
 def lpm_route(ip_pkt):
     for cm in sorted(set(m for n,m in route_dic), reverse=True):
-        m = (1 << cm) - 1
+        v = (1 << cm) - 1
         m = v << (32-cm)
         t = (ip_pkt.dstip.toUnsigned() & m, cm)
         if t in route_dic:
@@ -163,8 +164,9 @@ def process_packet_in(inp):
     if not isinstance(inp, packet_base) or (isinstance(inp, packet_base) and not inp.parsed):
         log.error("pkt_in packet is unable to be parsed")
         return
+    #print hexdump(inp.payload)
     ip_pkt = ipv4(inp.payload)
-    if ip_pkt.parsed:
+    if not ip_pkt.parsed:
         log.error("pkt_in data is not a ipv4 packet")
         return
     lpm_route(ip_pkt)
