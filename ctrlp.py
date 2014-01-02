@@ -12,6 +12,7 @@ from lib.vlog import *
 from lib.stream import *
 from lib.poller import *
 from lib.socket_util import *
+from lib.util import *
 from lib import timeval
 
 from proto.ctrl_frm import *
@@ -19,7 +20,7 @@ from proto.service import *
 
 MYID                = 1
 
-VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | sed -n "/^..\*.*/p" | cut -d "*" -f 2 | cut -d " " -f 2'
+VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
@@ -38,6 +39,7 @@ conn_dic = {}
 xid_dic = {}
 
 def enqueue_ctrl_pkt(ctrl):
+    #print "%s"%hexdump(ctrl.pack())
     ctrl_pkt_list.append(ctrl.pack())
 
 def rule_add(dn, site, idle, hard):
@@ -125,6 +127,7 @@ def srvc_ctrl(n):
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
     ctrl.next.len = service.MIN_LEN
+    ctrl.next.type = service.SRVC_CTRL
     ctrl.next.next = rt_b()
     ctrl.next.next.id = MYID
     ctrl.next.next.set_dest_nets(n)
@@ -260,8 +263,6 @@ def main():
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
-            if len(data) > 0:
-                log.debug("exp %d read %d, get %d" % (exp_len, exp_len-len(pkt), len(data)))
             if (error, data) == (0, ""):
                 log.warning("connection closed...")
                 conn.close()
