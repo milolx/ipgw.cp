@@ -87,7 +87,7 @@ class rt_b(packet_base):
         p = b''
         for k in self.dn:
             dest, mask = k
-            p += struct.pack('!LBBH', dest.toUnsigned(), mask, 0, 0)
+            p += struct.pack('!LBBH', dest.toUnsigned(), int(mask), 0, 0)
         self.next = p
 
         self.parsed = True

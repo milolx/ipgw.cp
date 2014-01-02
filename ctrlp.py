@@ -17,11 +17,13 @@ from lib import timeval
 from proto.ctrl_frm import *
 from proto.service import *
 
-VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | sed -n "/^[^C^K]>/p" | cut -d " " -f 2'
+MYID                = 1
+
+VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | sed -n "/^..\*.*/p" | cut -d "*" -f 2 | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
-TIMER_INTERVAL      = 10000     # in ms
+TIMER_INTERVAL      = 5000     # in ms
 PARSE_HDR           = 0
 PARSE_BODY          = 1
 
@@ -124,7 +126,7 @@ def srvc_ctrl(n):
     ctrl.next = service()
     ctrl.next.len = service.MIN_LEN
     ctrl.next.next = rt_b()
-    ctrl.next.next.id = myid
+    ctrl.next.next.id = MYID
     ctrl.next.next.set_dest_nets(n)
     ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
@@ -221,6 +223,8 @@ def process_timer():
     nets = out.split("\n")
     reachable_set = set()
     for net in nets:
+        if len(net) == 0:
+            continue
         ip,mask = net.split("/")
         reachable_set.add((IPAddr(ip), mask))
     srvc_ctrl(reachable_set)
