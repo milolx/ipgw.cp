@@ -21,7 +21,7 @@ class ack(packet_base):
         self.prev = prev
 
         self.result= ack.SRVC_RSLT_NONE
-        self.xid = (int(time.time()) + 1) & 0xffff
+        self.xid = 0
 
         if raw is not None:
             self.parse(raw)

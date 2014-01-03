@@ -31,6 +31,7 @@ VTYSH_ROUTE_CMD    += ' | grep "^..\*.*"'
 VTYSH_ROUTE_CMD    += ' | cut -d "*" -f 2'
 VTYSH_ROUTE_CMD    += ' | cut -d " " -f 2'
 FLUSH_SAT_TUN_CMD   = 'ip route flush dev sat_tun'
+TURN_ON_FORWARD     = 'echo 1 > /proc/sys/net/ipv4/ip_forward'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
@@ -56,10 +57,12 @@ local_route_set = set()
 
 def enqueue_ctrl_pkt(ctrl):
     global ctrl_pkt_list 
+
     #print "%s"%hexdump(ctrl.pack())
     ctrl_pkt_list.append(ctrl.pack())
 
 def rule_add(dn, site, idle, hard):
+    log.info("add forwarding rule: %s/%d to site %d, idle:%d hard:%d"%(dn[0], dn[1], site, idle, hard))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_ADD
     ctrl.next = rule();
@@ -82,6 +85,7 @@ def rule_rm(dn):
 
 def rm_route(s, id):
     global site_dic, state_dic, route_dic
+
     for k in s:
         if route_dic[k] != id:  # route is not via id
             continue
@@ -331,6 +335,8 @@ def main():
                 conn_dic = {}
                 xid_dic = {}
                 get_local_route_set()
+                log.info("turn on ip forward...")
+                os.system(TURN_ON_FORWARD)
 
                 connected = True
         if connected:
