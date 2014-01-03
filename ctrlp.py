@@ -30,6 +30,7 @@ VTYSH_ROUTE_CMD    += ' | grep -v "127.0.0"'
 VTYSH_ROUTE_CMD    += ' | grep "^..\*.*"'
 VTYSH_ROUTE_CMD    += ' | cut -d "*" -f 2'
 VTYSH_ROUTE_CMD    += ' | cut -d " " -f 2'
+FLUSH_SAT_TUN_CMD   = 'ip route flush dev sat_tun'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
@@ -50,9 +51,11 @@ ctrl_pkt_list = []             # queue for packet to data path
 conn_dic = {}                  # remote site connection
 xid_dic = {}                   # xid_dic[xid] = remote_site_num, for recogonize comm proc between
                                #     service host and i
+local_route_set = set()
 
 
 def enqueue_ctrl_pkt(ctrl):
+    global ctrl_pkt_list 
     #print "%s"%hexdump(ctrl.pack())
     ctrl_pkt_list.append(ctrl.pack())
 
@@ -78,6 +81,7 @@ def rule_rm(dn):
     enqueue_ctrl_pkt(ctrl)
 
 def rm_route(s, id):
+    global site_dic, state_dic, route_dic
     for k in s:
         if route_dic[k] != id:  # route is not via id
             continue
@@ -101,26 +105,31 @@ def rm_route(s, id):
             os.system(cmd)
 
 def add_route(s, id):
+    global route_dic
+
     for k in s:
         if not k in route_dic:
+            log.info("add route to dev sat_tun: %s/%d"%k)
             route_dic[k] = id
             cmd = "ip route add %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
 
 def process_srvc_ctrl(rt):
+    global site_dic, state_dic, local_route_set
+
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
         log.error("route table data is unable to be parsed")
         return
     if rt.site in site_dic:
-        add_set = rt.dn - site_dic[rt.site]
-        rm_set = site_dic[rt.site] - rt.dn
+        add_set = rt.dn - site_dic[rt.site] - local_route_set
+        rm_set = site_dic[rt.site] - rt.dn - local_route_set
         if len(add_set) > 0 or len(rm_set) > 0:
             site_dic[rt.site] = rt.dn
         rm_route(rm_set, rt.site)
         add_route(add_set, rt.site)
     else:
         site_dic[rt.site] = rt.dn
-        add_route(rt.dn, rt.site)
+        add_route(rt.dn - local_route_set, rt.site)
         state_dic[rt.site] = STATE_NOT_CONNECTED
 
 def req_conn(site):
@@ -136,7 +145,9 @@ def req_conn(site):
     enqueue_ctrl_pkt(ctrl)
     return xid
 
-def srvc_ctrl(n):
+def srvc_ctrl():
+    global local_route_set
+
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
@@ -144,12 +155,14 @@ def srvc_ctrl(n):
     ctrl.next.type = service.SRVC_CTRL
     ctrl.next.next = rt_b()
     ctrl.next.next.site = MYID
-    ctrl.next.next.set_dest_nets(n)
+    ctrl.next.next.set_dest_nets(local_route_set)
     ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
     enqueue_ctrl_pkt(ctrl)
 
 def lpm_route(ip_pkt):
+    global state_dic, route_dic, conn_dic, xid_dic
+
     for cm in sorted(set(m for n,m in route_dic), reverse=True):
         v = (1 << cm) - 1
         m = v << (32-cm)
@@ -185,6 +198,8 @@ def process_packet_in(inp):
     lpm_route(ip_pkt)
 
 def process_srvc_ack(a):
+    global state_dic, route_dic, conn_dic, xid_dic
+
     if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
         log.error("ack pkt is unable to be parsed")
         return
@@ -229,7 +244,9 @@ def process_in(ctrl):
     else:
         log.error("should not recv this type:%d" % ctrl.type)
 
-def propergate_route():
+def get_local_route_set():
+    global local_route_set
+
     proc = subprocess.Popen(VTYSH_ROUTE_CMD,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -239,15 +256,21 @@ def propergate_route():
         log.warning("no route found")
         return
     nets = out.split("\n")
-    reachable_set = set()
+    route_set = set()
     for net in nets:
         if len(net) == 0:
             continue
         ip,mask = net.split("/")
-        reachable_set.add((IPAddr(ip), mask))
-    srvc_ctrl(reachable_set)
+        route_set.add((IPAddr(ip), int(mask)))
+    local_route_set = route_set
+
+def propergate_route():
+    get_local_route_set()
+    srvc_ctrl()
 
 def chk_sites(now):
+    global state_dic, conn_dic, xid_dic
+
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
             log.warning("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
@@ -257,20 +280,32 @@ def chk_sites(now):
                 if xid_dic[xid] == s:
                     del xid_dic[xid]
 
+def process_timer():
+    now = timeval.msec()
+    if now > process_timer.prop_tmr_expire:
+        propergate_route()
+        process_timer.prop_tmr_expire = now + PROP_INTERVAL
+    if now > process_timer.conn_tmr_expire:
+        chk_sites(now)
+        process_timer.conn_tmr_expire = now + CONN_INTERVAL
+process_timer.prop_tmr_expire = 0
+process_timer.conn_tmr_expire = 0
+
 def send_out_ququed_pkt(conn):
+    global ctrl_pkt_list 
+
     for p in ctrl_pkt_list:
         conn.send(p)
         ctrl_pkt_list.remove(p)
 
 def main():
+    global site_dic, state_dic, route_dic, ctrl_pkt_list, conn_dic, xid_dic
+
     lib.vlog.Vlog.init()
     #set_detach()
     #set_monitor()
     daemonize_start()
     daemonize_complete()
-
-    prop_tmr_expire = 0
-    conn_tmr_expire = 0
 
     poller = Poller()
     error, server = PassiveStream.open("punix:/tmp/ctrl.sock")
@@ -287,6 +322,16 @@ def main():
                 server.wait(poller)
             else:
                 log.info("connection established...")
+                log.info("flush sat_tun, init...")
+		os.system(FLUSH_SAT_TUN_CMD)
+                site_dic = {}
+                state_dic = {}
+                route_dic = {}
+                ctrl_pkt_list = []
+                conn_dic = {}
+                xid_dic = {}
+                get_local_route_set()
+
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
@@ -326,13 +371,7 @@ def main():
                 conn.recv_wait(poller)
                 send_out_ququed_pkt(conn)
 
-        now = timeval.msec()
-        if now > prop_tmr_expire:
-            propergate_route()
-            prop_tmr_expire = now + PROP_INTERVAL
-        if now > conn_tmr_expire:
-            chk_sites(now)
-            conn_tmr_expire = now + CONN_INTERVAL
+            process_timer()
 
         if connected:
             send_out_ququed_pkt(conn)
