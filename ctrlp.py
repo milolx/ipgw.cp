@@ -2,10 +2,6 @@
 # vim: sts=4 sw=4 et
 
 import subprocess
-import logging
-#logging.basicConfig(filename='debug.log',level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger('ctrlplane')
 
 from lib.daemon import *
 from lib.vlog import *
@@ -18,6 +14,11 @@ from lib import timeval
 
 from proto.ctrl_frm import *
 from proto.service import *
+
+import logging
+#logging.basicConfig(filename='debug.log',level=logging.DEBUG)
+logging.basicConfig(level=logging.DEBUG)
+log = logging.getLogger('ctrlplane')
 
 MYID                = 1
 
@@ -285,12 +286,12 @@ def main():
             if conn == None:
                 server.wait(poller)
             else:
-                log.warning("connection established...")
+                log.info("connection established...")
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
             if (error, data) == (0, ""):
-                log.warning("connection closed...")
+                log.info("connection closed...")
                 conn.close()
                 connected = False
                 pkt = b''
