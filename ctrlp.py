@@ -21,23 +21,35 @@ from proto.service import *
 
 MYID                = 1
 
-VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "inactive" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
+#VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "inactive" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
+VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route"'
+VTYSH_ROUTE_CMD    += ' | grep -v "inactive"'
+VTYSH_ROUTE_CMD    += ' | grep -v "sat_tun"'
+VTYSH_ROUTE_CMD    += ' | grep -v "127.0.0"'
+VTYSH_ROUTE_CMD    += ' | grep "^..\*.*"'
+VTYSH_ROUTE_CMD    += ' | cut -d "*" -f 2'
+VTYSH_ROUTE_CMD    += ' | cut -d " " -f 2'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
-TIMER_INTERVAL      = 5000     # in ms
+TIMER_INTERVAL      = 500      # in ms
+PROP_INTERVAL       = 20000    # in ms, propergate route info to other sites
+CONN_INTERVAL       = 1000     # in ms, manage conn to other sites (actually via service host)
 PARSE_HDR           = 0
 PARSE_BODY          = 1
 
 SOFT_TIMEOUT = 30
 HARD_TIMEOUT = 0
+CONN_TIMEOUT = 5000            # in ms
 
-site_dic = {}
-state_dic = {}
-route_dic = {}
-ctrl_pkt_list = []
-conn_dic = {}
-xid_dic = {}
+site_dic = {}                  # site_dic[remote_site] = reachable network set
+state_dic = {}                 # state_dic[remote_site] = connection state
+route_dic = {}                 # route_dic[(net, masknum)] = remote_site
+ctrl_pkt_list = []             # queue for packet to data path
+conn_dic = {}                  # remote site connection
+xid_dic = {}                   # xid_dic[xid] = remote_site_num, for recogonize comm proc between
+                               #     service host and i
+
 
 def enqueue_ctrl_pkt(ctrl):
     #print "%s"%hexdump(ctrl.pack())
@@ -130,7 +142,7 @@ def srvc_ctrl(n):
     ctrl.next.len = service.MIN_LEN
     ctrl.next.type = service.SRVC_CTRL
     ctrl.next.next = rt_b()
-    ctrl.next.next.id = MYID
+    ctrl.next.next.site = MYID
     ctrl.next.next.set_dest_nets(n)
     ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
@@ -140,7 +152,7 @@ def lpm_route(ip_pkt):
     for cm in sorted(set(m for n,m in route_dic), reverse=True):
         v = (1 << cm) - 1
         m = v << (32-cm)
-        t = (ip_pkt.dstip.toUnsigned() & m, cm)
+        t = (IPAddr(ip_pkt.dstip.toUnsigned() & m), cm)
         if t in route_dic:
             s = route_dic[t]
             if state_dic[s] == STATE_NOT_CONNECTED:
@@ -151,7 +163,7 @@ def lpm_route(ip_pkt):
                 conn_dic[s]['timestamp'] = timeval.msec()
                 conn_dic[s]['list'] = []
                 conn_dic[s]['list'].append((ip_pkt,t))
-                state_dic[site] = STATE_IN_PROGRESS
+                state_dic[s] = STATE_IN_PROGRESS
             elif state_dic[s] == STATE_IN_PROGRESS:
                 conn_dic[s]['list'].append((ip_pkt,t))
             elif state_dic[s] == STATE_CONNECTED:
@@ -190,8 +202,8 @@ def process_srvc_ack(a):
         state_dic[site] == STATE_CONNECTED
     else:
         log.error("ack result's unknown(%d)" % a.result)
-    xid_dic.remove(xid)
-    conn_dic.remove(site)
+    del xid_dic[xid]
+    del conn_dic[site]
 
 def process_srvc_notify(n):
     log.warning("process_srvc_notify not implemente yet")
@@ -216,7 +228,7 @@ def process_in(ctrl):
     else:
         log.error("should not recv this type:%d" % ctrl.type)
 
-def process_timer():
+def propergate_route():
     proc = subprocess.Popen(VTYSH_ROUTE_CMD,
                 stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
@@ -234,6 +246,16 @@ def process_timer():
         reachable_set.add((IPAddr(ip), mask))
     srvc_ctrl(reachable_set)
 
+def chk_sites(now):
+    for s in set(x for x in conn_dic):
+        if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
+            log.warning("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
+            del conn_dic[s]
+            state_dic[s] = STATE_NOT_CONNECTED
+            for xid in set(x for x in xid_dic):
+                if xid_dic[xid] == s:
+                    del xid_dic[xid]
+
 def send_out_ququed_pkt(conn):
     for p in ctrl_pkt_list:
         conn.send(p)
@@ -246,6 +268,9 @@ def main():
     daemonize_start()
     daemonize_complete()
 
+    prop_tmr_expire = 0
+    conn_tmr_expire = 0
+
     poller = Poller()
     error, server = PassiveStream.open("punix:/tmp/ctrl.sock")
     hdr = ctrl_frm()
@@ -253,7 +278,6 @@ def main():
     pkt = b''
     exp_len = ctrl_frm.MIN_LEN
     parse_state = PARSE_HDR
-    timer_expire = timeval.msec() + TIMER_INTERVAL
     poller.timer_wait(TIMER_INTERVAL)
     while True:
         if not connected:
@@ -301,14 +325,18 @@ def main():
                 conn.recv_wait(poller)
                 send_out_ququed_pkt(conn)
 
-        if timeval.msec() >= timer_expire:
-            timer_expire = timeval.msec() + TIMER_INTERVAL
-            process_timer()
+        now = timeval.msec()
+        if now > prop_tmr_expire:
+            propergate_route()
+            prop_tmr_expire = now + PROP_INTERVAL
+        if now > conn_tmr_expire:
+            chk_sites(now)
+            conn_tmr_expire = now + CONN_INTERVAL
 
         if connected:
             send_out_ququed_pkt(conn)
 
-        poller.timer_wait(1000)
+        poller.timer_wait(TIMER_INTERVAL)
         poller.block()
     
 
