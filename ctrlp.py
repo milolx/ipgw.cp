@@ -75,6 +75,7 @@ def rule_add(dn, site, idle, hard):
     enqueue_ctrl_pkt(ctrl)
 
 def rule_rm(dn):
+    log.info("remove forwarding rule: to %s/%d"%(dn[0], dn[1]))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_RM
     ctrl.next = rule();
@@ -83,30 +84,35 @@ def rule_rm(dn):
     ctrl.len = rule.MIN_LEN
     enqueue_ctrl_pkt(ctrl)
 
-def rm_route(s, id):
+# remove route in dest net set 's' which via site 'site'
+def rm_route(s, site):
     global site_dic, state_dic, route_dic
 
     for k in s:
-        if route_dic[k] != id:  # route is not via id
+        if route_dic[k] != site:  # route is not via 'site'
             continue
 
+        # remove data path anyway
+        if state_dic[site] == STATE_CONNECTED:
+            rule_rm(k)
         # find out if this dest network is reachable via any other site
         find = False
         for id in site_dic:
             if k in site_dic[id]:
                 find = True
-                if state_dic[route_dic[k]] == STATE_CONNECTED:
-                    rule_rm(k)
                 if state_dic[id] == STATE_CONNECTED:
                     rule_add(k, id, SOFT_TIMEOUT, HARD_TIMEOUT)
                 route_dic[k] = id
+                log.info("route %s/%d change from via %d to %d"%(k[0], k[1], site, id))
                 break
         # if no other site reachable, just remove the static route
         # dp route will be removed when soft_to reach
         if not find:
+            state_dic = STATE_NOT_CONNECTED
             del route_dic[k]
             cmd = "ip route del %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
+            log.info("route removed: %s/%d"%(k[0], k[1]))
 
 def add_route(s, id):
     global route_dic
@@ -223,6 +229,7 @@ def process_srvc_ack(a):
     else:
         log.error("ack result's unknown(%d)" % a.result)
     del xid_dic[xid]
+    state_dic[site] = STATE_NOT_CONNECTED
     del conn_dic[site]
 
 def process_srvc_notify(n):
@@ -278,8 +285,8 @@ def chk_sites(now):
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
             log.warning("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
-            del conn_dic[s]
             state_dic[s] = STATE_NOT_CONNECTED
+            del conn_dic[s]
             for xid in set(x for x in xid_dic):
                 if xid_dic[xid] == s:
                     del xid_dic[xid]
@@ -319,6 +326,7 @@ def main():
     exp_len = ctrl_frm.MIN_LEN
     parse_state = PARSE_HDR
     poller.timer_wait(TIMER_INTERVAL)
+    log.info("ctrlplane started...")
     while True:
         if not connected:
             error, conn = server.accept()
