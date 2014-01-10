@@ -55,7 +55,7 @@ from icmpv6 import *
 from packet_base import packet_base
 
 from lib.addresses import IPAddr6
-from lib.util import init_helper
+from lib.util2 import init_helper
 
 
 _extension_headers = {}

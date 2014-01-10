@@ -64,10 +64,7 @@ from packet_utils import *
 
 from packet_base import packet_base
 from lib.addresses import EthAddr
-from lib.util import initHelper
-
-import logging
-lg = logging.getLogger('packet')
+from lib.util2 import initHelper
 
 #======================================================================
 #                        LLDP PDU

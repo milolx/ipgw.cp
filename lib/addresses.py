@@ -20,6 +20,9 @@ from __future__ import print_function
 import struct
 import socket
 
+import vlog
+log = vlog.Vlog('addresses')
+
 # Slightly tested attempt at Python 3 friendliness
 import sys
 if 'long' not in sys.modules['__builtin__'].__dict__:
@@ -64,8 +67,7 @@ def _load_oui_names ():
             oui = int(oui_str, 16)
             _eth_oui_to_name[oui] = oui_name.strip()
     except:
-        import logging
-        logging.getLogger().warn("Could not load OUI list")
+        log.warn("Could not load OUI list")
     if f: f.close()
 _load_oui_names()
 

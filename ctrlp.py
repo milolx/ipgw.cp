@@ -15,10 +15,11 @@ from lib import timeval
 from proto.ctrl_frm import *
 from proto.service import *
 
-import logging
+#import logging
 #logging.basicConfig(filename='debug.log',level=logging.DEBUG)
-logging.basicConfig(level=logging.DEBUG)
-log = logging.getLogger('ctrlplane')
+#logging.basicConfig(level=logging.DEBUG)
+#log = logging.getLogger('ctrlplane')
+log = Vlog('ctrlplane')
 
 MYID                = 1
 
@@ -108,7 +109,6 @@ def rm_route(s, site):
         # if no other site reachable, just remove the static route
         # dp route will be removed when soft_to reach
         if not find:
-            state_dic = STATE_NOT_CONNECTED
             del route_dic[k]
             cmd = "ip route del %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
@@ -220,7 +220,7 @@ def process_srvc_ack(a):
     xid = a.xid
     site = xid_dic[xid]
     if a.result == ack.SRVC_RSLT_ERR:
-        log.warning("conn to site(%d) failed" % site)
+        log.warn("conn to site(%d) failed" % site)
         state_dic[site] = STATE_NOT_CONNECTED
     elif a.result == ack.SRVC_RSLT_OK:
         for pkt,t in conn_dic[site]['list']:
@@ -233,7 +233,7 @@ def process_srvc_ack(a):
     del conn_dic[site]
 
 def process_srvc_notify(n):
-    log.warning("process_srvc_notify not implemente yet")
+    log.warn("process_srvc_notify not implemente yet")
     pass
 
 def process_in(ctrl):
@@ -264,7 +264,7 @@ def get_local_route_set():
                 shell=True)
     out,err = proc.communicate()
     if not '/' in out:
-        log.warning("no route found")
+        log.warn("no route found")
         return
     nets = out.split("\n")
     route_set = set()
@@ -284,7 +284,7 @@ def chk_sites(now):
 
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
-            log.warning("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
+            log.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
             state_dic[s] = STATE_NOT_CONNECTED
             del conn_dic[s]
             for xid in set(x for x in xid_dic):
@@ -312,7 +312,7 @@ def send_out_ququed_pkt(conn):
 def main():
     global site_dic, state_dic, route_dic, ctrl_pkt_list, conn_dic, xid_dic
 
-    lib.vlog.Vlog.init()
+    Vlog.init()
     #set_detach()
     #set_monitor()
     daemonize_start()
@@ -366,7 +366,7 @@ def main():
                             exp_len = ctrl_frm.MIN_LEN + hdr.len
                             parse_state = PARSE_BODY
                         else:
-                            log.warning("parse hdr failed. close conn...")
+                            log.warn("parse hdr failed. close conn...")
                             conn.close()
                             connected = False
                             pkt = b''

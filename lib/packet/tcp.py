@@ -49,8 +49,8 @@ from socket import htonl
 
 from packet_base import packet_base
 
-import logging
-lg = logging.getLogger('packet')
+import lib.vlog
+lg = lib.vlog.Vlog('packet')
 
 class tcp_opt:
 

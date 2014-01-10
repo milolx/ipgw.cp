@@ -44,7 +44,7 @@ from packet_utils import *
 from packet_base import packet_base
 
 from lib.addresses import IPAddr6,EthAddr
-from lib.util import hexdump, init_helper
+from lib.util2 import hexdump, init_helper
 
 # Errors
 TYPE_DEST_UNREACH   = 1

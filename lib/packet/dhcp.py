@@ -58,8 +58,8 @@ import string
 from packet_utils import *
 
 from packet_base import packet_base
-import lib.util as util
-from lib.util import is_subclass
+import lib.util2 as util
+from lib.util2 import is_subclass
 from lib.addresses import *
 
 _dhcp_option_unpackers = {}

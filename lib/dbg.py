@@ -1,7 +1,7 @@
 # vim: sts=4 sw=4 et
 
-import logging
-log = logging.getLogger("dbg")
+import vlog
+log = vlog.Vlog("dbg")
 
 def sane_color(x):
     r=""

@@ -16,10 +16,10 @@
 # This file is derived from the packet library in NOX, which was
 # developed by Nicira, Inc.
 
-import logging
-lg = logging.getLogger('packet')
+import lib.vlog
+lg = lib.vlog.Vlog('packet')
 
-from lib.util import initHelper
+from lib.util2 import initHelper
 
 class packet_base (object):
     """
@@ -86,7 +86,7 @@ class packet_base (object):
     def warn(self, *args):
         """ Shortcut for logging """
         #TODO: Remove?
-        lg.warning(*args)
+        lg.warn(*args)
 
     def __nonzero__(self):
         return self.parsed is True
