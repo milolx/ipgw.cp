@@ -388,7 +388,7 @@ def daemonize_complete():
     if _detach:
         if _chdir:
             os.chdir("/")
-        _close_standard_fds()
+        #_close_standard_fds()
 
 
 def usage():
