@@ -1,6 +1,6 @@
 import os
 PKGDATADIR = os.environ.get("OVS_PKGDATADIR", """/usr/local/share/openvswitch""")
-RUNDIR = os.environ.get("OVS_RUNDIR", """/var/run""")
+RUNDIR = os.environ.get("OVS_RUNDIR", """/tmp""")
 LOGDIR = os.environ.get("OVS_LOGDIR", """/usr/local/var/log""")
 BINDIR = os.environ.get("OVS_BINDIR", """/usr/local/bin""")
 
