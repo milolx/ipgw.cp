@@ -2,24 +2,29 @@
 # vim: sts=4 sw=4 et
 
 import subprocess
+import argparse
+import lib.daemon
+import lib.vlog
+import lib.timeval
+import lib.unixctl
+import lib.unixctl.server
+import lib.util
 
-from lib.daemon import *
-from lib.vlog import *
 from lib.stream import *
 from lib.poller import *
 from lib.socket_util import *
-from lib.util import *
 from lib.packet.ipv4 import *
-from lib import timeval
 
 from proto.ctrl_frm import *
 from proto.service import *
 
+vlog = lib.vlog.Vlog("ctrlp")
+exiting = False
+
 #import logging
-#logging.basicConfig(filename='debug.log',level=logging.DEBUG)
+#logging.basicConfig(filename='debug.vlog',level=logging.DEBUG)
 #logging.basicConfig(level=logging.DEBUG)
-#log = logging.getLogger('ctrlplane')
-log = Vlog('ctrlplane')
+#vlog = logging.getLogger('ctrlplane')
 
 MYID                = 1
 
@@ -63,7 +68,7 @@ def enqueue_ctrl_pkt(ctrl):
     ctrl_pkt_list.append(ctrl.pack())
 
 def rule_add(dn, site, idle, hard):
-    log.info("add forwarding rule: %s/%d to site %d, idle:%d hard:%d"%(dn[0], dn[1], site, idle, hard))
+    vlog.info("add forwarding rule: %s/%d to site %d, idle:%d hard:%d"%(dn[0], dn[1], site, idle, hard))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_ADD
     ctrl.next = rule();
@@ -76,7 +81,7 @@ def rule_add(dn, site, idle, hard):
     enqueue_ctrl_pkt(ctrl)
 
 def rule_rm(dn):
-    log.info("remove forwarding rule: to %s/%d"%(dn[0], dn[1]))
+    vlog.info("remove forwarding rule: to %s/%d"%(dn[0], dn[1]))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_RM
     ctrl.next = rule();
@@ -104,7 +109,7 @@ def rm_route(s, site):
                 if state_dic[id] == STATE_CONNECTED:
                     rule_add(k, id, SOFT_TIMEOUT, HARD_TIMEOUT)
                 route_dic[k] = id
-                log.info("route %s/%d change from via %d to %d"%(k[0], k[1], site, id))
+                vlog.info("route %s/%d change from via %d to %d"%(k[0], k[1], site, id))
                 break
         # if no other site reachable, just remove the static route
         # dp route will be removed when soft_to reach
@@ -112,14 +117,14 @@ def rm_route(s, site):
             del route_dic[k]
             cmd = "ip route del %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
-            log.info("route removed: %s/%d"%(k[0], k[1]))
+            vlog.info("route removed: %s/%d"%(k[0], k[1]))
 
 def add_route(s, id):
     global route_dic
 
     for k in s:
         if not k in route_dic:
-            log.info("add route to dev sat_tun: %s/%d"%k)
+            vlog.info("add route to dev sat_tun: %s/%d"%k)
             route_dic[k] = id
             cmd = "ip route add %s/%d dev sat_tun" % (k[0], k[1])
             os.system(cmd)
@@ -128,7 +133,7 @@ def process_srvc_ctrl(rt):
     global site_dic, state_dic, local_route_set
 
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
-        log.error("route table data is unable to be parsed")
+        vlog.error("route table data is unable to be parsed")
         return
     if rt.site in site_dic:
         add_set = rt.dn - site_dic[rt.site] - local_route_set
@@ -184,7 +189,7 @@ def lpm_route(ip_pkt):
                 xid_dic[xid] = s
 
                 conn_dic[s] = {}
-                conn_dic[s]['timestamp'] = timeval.msec()
+                conn_dic[s]['timestamp'] = lib.timeval.msec()
                 conn_dic[s]['list'] = []
                 conn_dic[s]['list'].append((ip_pkt,t))
                 state_dic[s] = STATE_IN_PROGRESS
@@ -193,17 +198,17 @@ def lpm_route(ip_pkt):
             elif state_dic[s] == STATE_CONNECTED:
                 rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
             else:
-                log.error("unknown site state")
+                vlog.error("unknown site state")
             return
 
 def process_packet_in(inp):
     if not isinstance(inp, packet_base) or (isinstance(inp, packet_base) and not inp.parsed):
-        log.error("pkt_in packet is unable to be parsed")
+        vlog.error("pkt_in packet is unable to be parsed")
         return
     #print hexdump(inp.payload)
     ip_pkt = ipv4(inp.payload)
     if not ip_pkt.parsed:
-        log.error("pkt_in data is not a ipv4 packet")
+        vlog.error("pkt_in data is not a ipv4 packet")
         return
     lpm_route(ip_pkt)
 
@@ -211,29 +216,29 @@ def process_srvc_ack(a):
     global state_dic, route_dic, conn_dic, xid_dic
 
     if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
-        log.error("ack pkt is unable to be parsed")
+        vlog.error("ack pkt is unable to be parsed")
         return
     if not a.xid in xid_dic:
-        log.error("xid is not expected(%d)" % a.xid)
+        vlog.error("xid is not expected(%d)" % a.xid)
         return
 
     xid = a.xid
     site = xid_dic[xid]
     if a.result == ack.SRVC_RSLT_ERR:
-        log.warn("conn to site(%d) failed" % site)
+        vlog.warn("conn to site(%d) failed" % site)
         state_dic[site] = STATE_NOT_CONNECTED
     elif a.result == ack.SRVC_RSLT_OK:
         for pkt,t in conn_dic[site]['list']:
             rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
         state_dic[site] == STATE_CONNECTED
     else:
-        log.error("ack result's unknown(%d)" % a.result)
+        vlog.error("ack result's unknown(%d)" % a.result)
     del xid_dic[xid]
     state_dic[site] = STATE_NOT_CONNECTED
     del conn_dic[site]
 
 def process_srvc_notify(n):
-    log.warn("process_srvc_notify not implemente yet")
+    vlog.warn("process_srvc_notify not implemente yet")
     pass
 
 def process_in(ctrl):
@@ -249,11 +254,11 @@ def process_in(ctrl):
             elif s.type == service.SRVC_CTRL:
                 process_srvc_ctrl(s.next)
             else:
-                log.error("cant parse this kind of service pkt:%d" % s.type)
+                vlog.error("cant parse this kind of service pkt:%d" % s.type)
         else:
-            log.error("cant parse service payload")
+            vlog.error("cant parse service payload")
     else:
-        log.error("should not recv this type:%d" % ctrl.type)
+        vlog.error("should not recv this type:%d" % ctrl.type)
 
 def get_local_route_set():
     global local_route_set
@@ -264,7 +269,7 @@ def get_local_route_set():
                 shell=True)
     out,err = proc.communicate()
     if not '/' in out:
-        log.warn("no route found")
+        vlog.warn("no route found")
         return
     nets = out.split("\n")
     route_set = set()
@@ -284,7 +289,7 @@ def chk_sites(now):
 
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
-            log.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
+            vlog.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
             state_dic[s] = STATE_NOT_CONNECTED
             del conn_dic[s]
             for xid in set(x for x in xid_dic):
@@ -292,7 +297,7 @@ def chk_sites(now):
                     del xid_dic[xid]
 
 def process_timer():
-    now = timeval.msec()
+    now = lib.timeval.msec()
     if now > process_timer.prop_tmr_expire:
         propergate_route()
         process_timer.prop_tmr_expire = now + PROP_INTERVAL
@@ -309,14 +314,37 @@ def send_out_ququed_pkt(conn):
         conn.send(p)
         ctrl_pkt_list.remove(p)
 
+def unixctl_exit(conn, unused_argv, aux):
+    assert aux == "aux_exit"
+    global exiting
+
+    exiting = True
+    conn.reply(None)
+
+def unixctl_log(conn, argv, unused_aux):
+    vlog.info(str(argv[0]))
+    conn.reply(None)
+
 def main():
     global site_dic, state_dic, route_dic, ctrl_pkt_list, conn_dic, xid_dic
 
-    Vlog.init()
-    #set_detach()
-    #set_monitor()
-    daemonize_start()
-    daemonize_complete()
+    parser = argparse.ArgumentParser(
+        description="IPGW ctrlp: control plane for IP access gateway")
+    parser.add_argument("--unixctl", help="UNIXCTL socket location or 'none'.")
+    lib.daemon.add_args(parser)
+    lib.vlog.add_args(parser)
+    args = parser.parse_args()
+    lib.daemon.handle_args(args)
+    lib.vlog.handle_args(args)
+
+    lib.daemon.daemonize_start()
+    error, unixctl_srvr = lib.unixctl.server.UnixctlServer.create(args.unixctl)
+    if error:
+        lib.util.ovs_fatal(error, "could not create unixctl server at %s"
+                           % args.unixctl, vlog)
+    lib.unixctl.command_register("exit", "", 0, 0, unixctl_exit, "aux_exit")
+    lib.unixctl.command_register("log", "[arg ...]", 1, 2, unixctl_log, None)
+    lib.daemon.daemonize_complete()
 
     poller = Poller()
     error, server = PassiveStream.open("punix:/tmp/ctrl.sock")
@@ -326,15 +354,15 @@ def main():
     exp_len = ctrl_frm.MIN_LEN
     parse_state = PARSE_HDR
     poller.timer_wait(TIMER_INTERVAL)
-    log.info("ctrlplane started...")
-    while True:
+    vlog.info("ctrlplane started...")
+    while not exiting:
         if not connected:
             error, conn = server.accept()
             if conn == None:
                 server.wait(poller)
             else:
-                log.info("connection established...")
-                log.info("flush sat_tun, init...")
+                vlog.info("connection established...")
+                vlog.info("flush sat_tun, init...")
 		os.system(FLUSH_SAT_TUN_CMD)
                 site_dic = {}
                 state_dic = {}
@@ -343,14 +371,14 @@ def main():
                 conn_dic = {}
                 xid_dic = {}
                 get_local_route_set()
-                log.info("turn on ip forward...")
+                vlog.info("turn on ip forward...")
                 os.system(TURN_ON_FORWARD)
 
                 connected = True
         if connected:
             error, data = conn.recv(exp_len-len(pkt))
             if (error, data) == (0, ""):
-                log.info("connection closed...")
+                vlog.info("connection closed...")
                 conn.close()
                 connected = False
                 pkt = b''
@@ -366,7 +394,7 @@ def main():
                             exp_len = ctrl_frm.MIN_LEN + hdr.len
                             parse_state = PARSE_BODY
                         else:
-                            log.warn("parse hdr failed. close conn...")
+                            vlog.warn("parse hdr failed. close conn...")
                             conn.close()
                             connected = False
                             pkt = b''
@@ -391,8 +419,21 @@ def main():
             send_out_ququed_pkt(conn)
 
         poller.timer_wait(TIMER_INTERVAL)
+
+        unixctl_srvr.run()
+        unixctl_srvr.wait(poller)
+        if exiting:
+            poller.immediate_wake()
+
         poller.block()
     
 
 if __name__ == '__main__':
-    main()
+    try:
+        main()
+    except SystemExit:
+        # Let system.exit() calls complete normally
+        raise
+    except:
+        vlog.exception("traceback")
+        sys.exit(lib.daemon.RESTART_EXIT_CODE)
