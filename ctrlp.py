@@ -434,6 +434,8 @@ if __name__ == '__main__':
     except SystemExit:
         # Let system.exit() calls complete normally
         raise
+    except KeyboardInterrupt:
+        vlog.info("KeyboardInterrupt")
     except:
         vlog.exception("traceback")
         sys.exit(lib.daemon.RESTART_EXIT_CODE)
