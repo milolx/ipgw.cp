@@ -237,7 +237,7 @@ def process_srvc_ack(a):
         vlog.error("ack pkt is unable to be parsed")
         return
     if not a.xid in xid_dic:
-        vlog.error("xid is not expected(%d)" % a.xid)
+        vlog.err("xid is not expected(%d)" % a.xid)
         return
 
     xid = a.xid
@@ -251,7 +251,7 @@ def process_srvc_ack(a):
         # add all target network via 'site' to data path
         for t in s:
             rule_add(t, site, soft_timeout, hard_timeout)
-        site_dic[site]['state'] == STATE_CONNECTED
+        site_dic[site]['state'] = STATE_CONNECTED
     else:
         vlog.error("ack result's unknown(%d)" % a.result)
         site_dic[site]['state'] = STATE_NOT_CONNECTED
