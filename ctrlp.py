@@ -3,6 +3,7 @@
 
 import subprocess
 import argparse
+import json
 import lib.daemon
 import lib.vlog
 import lib.timeval
@@ -38,6 +39,7 @@ VTYSH_ROUTE_CMD    += ' | cut -d "*" -f 2'
 VTYSH_ROUTE_CMD    += ' | cut -d " " -f 2'
 FLUSH_SAT_TUN_CMD   = 'ip route flush dev sat_tun'
 TURN_ON_FORWARD     = 'echo 1 > /proc/sys/net/ipv4/ip_forward'
+CFG_FILE            = '/mnt/app_part/ipgw/cp.cfg'
 STATE_NOT_CONNECTED = 0
 STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
@@ -330,6 +332,7 @@ def main():
 
     parser = argparse.ArgumentParser(
         description="IPGW ctrlp: control plane for IP access gateway")
+    parser.add_argument("-f", "--cfgfile", metavar="FILE", help="use FILE as configuration file")
     parser.add_argument("--unixctl", help="UNIXCTL socket location or 'none'.")
     lib.daemon.add_args(parser)
     lib.vlog.add_args(parser)
@@ -338,6 +341,21 @@ def main():
     lib.vlog.handle_args(args)
 
     lib.daemon.daemonize_start()
+    if args.cfgfile is not None:
+        cfgfile = args.cfgfile
+    else:
+        cfgfile = CFG_FILE
+    try:
+        f = open(cfgfile, 'r')
+    except IOError as e:
+        vlog.err("open cfg file err(%s): %s"%(cfgfile, e.strerror))
+        sys.exit(lib.daemon.RESTART_EXIT_CODE)
+    try:
+        cfg = json.load(f)
+    except ValueError as e:
+        vlog.err("parse configuration file failed(%s): %s"%(cfgfile, e))
+        sys.exit(lib.daemon.RESTART_EXIT_CODE)
+    f.close()
     error, unixctl_srvr = lib.unixctl.server.UnixctlServer.create(args.unixctl)
     if error:
         lib.util.ovs_fatal(error, "could not create unixctl server at %s"
