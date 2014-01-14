@@ -27,8 +27,6 @@ exiting = False
 #logging.basicConfig(level=logging.DEBUG)
 #vlog = logging.getLogger('ctrlplane')
 
-MYID                = 1
-
 #VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route" | grep -v "inactive" | grep -v "sat_tun" | grep "^..\*.*" | cut -d "*" -f 2 | cut -d " " -f 2'
 VTYSH_ROUTE_CMD     = 'vtysh -c "show ip route"'
 VTYSH_ROUTE_CMD    += ' | grep -v "inactive"'
@@ -45,21 +43,34 @@ STATE_IN_PROGRESS   = 1
 STATE_CONNECTED     = 2
 TIMER_INTERVAL      = 500      # in ms
 PROP_INTERVAL       = 20000    # in ms, propergate route info to other sites
-CONN_INTERVAL       = 1000     # in ms, manage conn to other sites (actually via service host)
+CHECK_INTERVAL      = 1000     # in ms, manage conn to other sites (actually via service host)
 PARSE_HDR           = 0
 PARSE_BODY          = 1
+ID_RANGE            = range(0, 65536)
+PROP_INTVL_RANGE    = range(5, 121)
+SOFT_TIMEOUT_RANGE  = range(2, 3601)
+HARD_TIMEOUT_RANGE  = range(0, 86401)   # 0 means permanent, max=24h
+CONN_REQ_TIMEOUT_RANGE  = range(1, 31)
 
 SOFT_TIMEOUT = 30
-HARD_TIMEOUT = 0
-CONN_TIMEOUT = 5000            # in ms
+HARD_TIMEOUT = 600
 
-site_dic = {}                  # site_dic[remote_site] = reachable network set
-state_dic = {}                 # state_dic[remote_site] = connection state
-route_dic = {}                 # route_dic[(net, masknum)] = remote_site
-ctrl_pkt_list = []             # queue for packet to data path
-conn_dic = {}                  # remote site connection
-xid_dic = {}                   # xid_dic[xid] = remote_site_num, for recogonize comm proc between
-                               #     service host and i
+CONN_REQ_TIMEOUT = 5000            # in ms
+
+site_id = -1
+prop_intvl = PROP_INTERVAL
+conn_req_timeout = CONN_REQ_TIMEOUT
+soft_timeout = SOFT_TIMEOUT
+hard_timeout = HARD_TIMEOUT
+
+site_dic = {}                   # site_dic[remote_site]['rn'] = reachable network set
+                                # site_dic[remote_site]['state'] = connection state
+route_dic = {}                  # route_dic[(net, masknum)] = remote_site
+ctrl_pkt_list = []              # queue for packet to data path
+conn_dic = {}                   # dic to store data while request in progress
+                                # conn_dic[remote_site]['...'] = ...
+xid_dic = {}                    # xid_dic[xid] = remote_site_num, for recogonize comm proc between
+                                #     service host and i
 local_route_set = set()
 
 
@@ -94,22 +105,22 @@ def rule_rm(dn):
 
 # remove route in dest net set 's' which via site 'site'
 def rm_route(s, site):
-    global site_dic, state_dic, route_dic
+    global route_dic
 
     for k in s:
         if route_dic[k] != site:  # route is not via 'site'
             continue
 
         # remove data path anyway
-        if state_dic[site] == STATE_CONNECTED:
+        if site_dic[site]['state'] == STATE_CONNECTED:
             rule_rm(k)
         # find out if this dest network is reachable via any other site
         find = False
         for id in site_dic:
-            if k in site_dic[id]:
+            if k in site_dic[id]['rn']:
                 find = True
-                if state_dic[id] == STATE_CONNECTED:
-                    rule_add(k, id, SOFT_TIMEOUT, HARD_TIMEOUT)
+                if site_dic[id]['state'] == STATE_CONNECTED:
+                    rule_add(k, id, soft_timeout, hard_timeout)
                 route_dic[k] = id
                 vlog.info("route %s/%d change from via %d to %d"%(k[0], k[1], site, id))
                 break
@@ -132,22 +143,25 @@ def add_route(s, id):
             os.system(cmd)
 
 def process_srvc_ctrl(rt):
-    global site_dic, state_dic, local_route_set
+    global site_dic
 
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
         vlog.error("route table data is unable to be parsed")
         return
     if rt.site in site_dic:
-        add_set = rt.dn - site_dic[rt.site] - local_route_set
-        rm_set = site_dic[rt.site] - rt.dn - local_route_set
+        # update routes in site_dic
+        add_set = rt.dn - site_dic[rt.site]['rn'] - local_route_set
+        rm_set = site_dic[rt.site]['rn'] - rt.dn - local_route_set
         if len(add_set) > 0 or len(rm_set) > 0:
-            site_dic[rt.site] = rt.dn
+            site_dic[rt.site]['rn'] = rt.dn
         rm_route(rm_set, rt.site)
         add_route(add_set, rt.site)
     else:
-        site_dic[rt.site] = rt.dn
+        # create item in site_dic
+        site_dic[rt.site] = {}
+        site_dic[rt.site]['rn'] = rt.dn
         add_route(rt.dn - local_route_set, rt.site)
-        state_dic[rt.site] = STATE_NOT_CONNECTED
+        site_dic[rt.site]['state'] = STATE_NOT_CONNECTED
 
 def req_conn(site):
     ctrl = ctrl_frm();
@@ -163,22 +177,20 @@ def req_conn(site):
     return xid
 
 def srvc_ctrl():
-    global local_route_set
-
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_SERVICE
     ctrl.next = service()
     ctrl.next.len = service.MIN_LEN
     ctrl.next.type = service.SRVC_CTRL
     ctrl.next.next = rt_b()
-    ctrl.next.next.site = MYID
+    ctrl.next.next.site = site_id
     ctrl.next.next.set_dest_nets(local_route_set)
     ctrl.next.len = rt_b.MIN_LEN + ctrl.next.next.len
     ctrl.len = service.MIN_LEN + ctrl.next.len
     enqueue_ctrl_pkt(ctrl)
 
 def lpm_route(ip_pkt):
-    global state_dic, route_dic, conn_dic, xid_dic
+    global site_dic, conn_dic, xid_dic
 
     for cm in sorted(set(m for n,m in route_dic), reverse=True):
         v = (1 << cm) - 1
@@ -186,21 +198,25 @@ def lpm_route(ip_pkt):
         t = (IPAddr(ip_pkt.dstip.toUnsigned() & m), cm)
         if t in route_dic:
             s = route_dic[t]
-            if state_dic[s] == STATE_NOT_CONNECTED:
+            if site_dic[s]['state'] == STATE_NOT_CONNECTED:
                 xid = req_conn(s)
                 xid_dic[xid] = s
 
                 conn_dic[s] = {}
                 conn_dic[s]['timestamp'] = lib.timeval.msec()
                 conn_dic[s]['list'] = []
+                # save the first pkt and routing decision
                 conn_dic[s]['list'].append((ip_pkt,t))
-                state_dic[s] = STATE_IN_PROGRESS
-            elif state_dic[s] == STATE_IN_PROGRESS:
+                site_dic[s]['state'] = STATE_IN_PROGRESS
+            elif site_dic[s]['state'] == STATE_IN_PROGRESS:
+                # save the first pkt and routing decision
                 conn_dic[s]['list'].append((ip_pkt,t))
-            elif state_dic[s] == STATE_CONNECTED:
-                rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
+            elif site_dic[s]['state'] == STATE_CONNECTED:
+                # just place a rule in data path
+                rule_add(t, s, soft_timeout, hard_timeout)
             else:
                 vlog.error("unknown site state")
+            # routing dicision has made, return
             return
 
 def process_packet_in(inp):
@@ -215,7 +231,7 @@ def process_packet_in(inp):
     lpm_route(ip_pkt)
 
 def process_srvc_ack(a):
-    global state_dic, route_dic, conn_dic, xid_dic
+    global site_dic, conn_dic, xid_dic
 
     if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
         vlog.error("ack pkt is unable to be parsed")
@@ -228,20 +244,45 @@ def process_srvc_ack(a):
     site = xid_dic[xid]
     if a.result == ack.SRVC_RSLT_ERR:
         vlog.warn("conn to site(%d) failed" % site)
-        state_dic[site] = STATE_NOT_CONNECTED
+        site_dic[site]['state'] = STATE_NOT_CONNECTED
     elif a.result == ack.SRVC_RSLT_OK:
-        for pkt,t in conn_dic[site]['list']:
-            rule_add(t, route_dic[t], SOFT_TIMEOUT, HARD_TIMEOUT)
-        state_dic[site] == STATE_CONNECTED
+        # make a set to avoid duplicate 't'(target network)
+        s = set(t for pkt,t in conn_dic[site]['list'])
+        # add all target network via 'site' to data path
+        for t in s:
+            rule_add(t, site, soft_timeout, hard_timeout)
+        site_dic[site]['state'] == STATE_CONNECTED
     else:
         vlog.error("ack result's unknown(%d)" % a.result)
+        site_dic[site]['state'] = STATE_NOT_CONNECTED
     del xid_dic[xid]
-    state_dic[site] = STATE_NOT_CONNECTED
     del conn_dic[site]
 
 def process_srvc_notify(n):
-    vlog.warn("process_srvc_notify not implemente yet")
-    pass
+    global site_dic
+
+    if not isinstance(n, packet_base) or (isinstance(n, packet_base) and not n.parsed):
+        vlog.error("notify pkt is unable to be parsed")
+        return
+    if n.site not in site_dic:
+        vlog.warn("invalid site num(%d)", n.site)
+        return
+    if n.type != nofify.SRVC_NOTIFY_LOGOUT and n.type != nofify.SRVC_NOTIFY_ERR:
+        vlog.warn("unknown notify type(%d)", n.type)
+        return
+    if n.type == nofify.SRVC_NOTIFY_LOGOUT:
+        vlog.info("site(%d) LOGOUT", n.site)
+    if n.type == nofify.SRVC_NOTIFY_ERR:
+        vlog.info("site(%d) ERR", n.site)
+
+    if n.site in conn_dic:
+        del conn_dic[n.site]
+        for xid in set(x for x in xid_dic):
+            if xid_dic[xid] == n.site:
+                del xid_dic[xid]
+    rm_route(site_dic[n.site]['rn'], n.site)
+    del site_dic[n.site]
+    vlog.info("site(%d) and related route removed", n.site)
 
 def process_in(ctrl):
     if ctrl.type == ctrl_frm.IPGW_PACKET_IN:
@@ -287,12 +328,12 @@ def propergate_route():
     srvc_ctrl()
 
 def chk_sites(now):
-    global state_dic, conn_dic, xid_dic
+    global site_dic, conn_dic, xid_dic
 
     for s in set(x for x in conn_dic):
-        if now > conn_dic[s]['timestamp'] + CONN_TIMEOUT:
+        if now > conn_dic[s]['timestamp'] + conn_req_timeout:
             vlog.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
-            state_dic[s] = STATE_NOT_CONNECTED
+            site_dic[s]['state'] = STATE_NOT_CONNECTED
             del conn_dic[s]
             for xid in set(x for x in xid_dic):
                 if xid_dic[xid] == s:
@@ -302,10 +343,10 @@ def process_timer():
     now = lib.timeval.msec()
     if now > process_timer.prop_tmr_expire:
         propergate_route()
-        process_timer.prop_tmr_expire = now + PROP_INTERVAL
+        process_timer.prop_tmr_expire = now + prop_intvl
     if now > process_timer.conn_tmr_expire:
         chk_sites(now)
-        process_timer.conn_tmr_expire = now + CONN_INTERVAL
+        process_timer.conn_tmr_expire = now + CHECK_INTERVAL
 process_timer.prop_tmr_expire = 0
 process_timer.conn_tmr_expire = 0
 
@@ -328,7 +369,8 @@ def unixctl_log(conn, argv, unused_aux):
     conn.reply(None)
 
 def main():
-    global site_dic, state_dic, route_dic, ctrl_pkt_list, conn_dic, xid_dic
+    global site_id, prop_intvl, conn_req_timeout, soft_timeout, hard_timeout
+    global site_dic, route_dic, ctrl_pkt_list, conn_dic, xid_dic
 
     parser = argparse.ArgumentParser(
         description="IPGW ctrlp: control plane for IP access gateway")
@@ -341,6 +383,7 @@ def main():
     lib.vlog.handle_args(args)
 
     lib.daemon.daemonize_start()
+
     if args.cfgfile is not None:
         cfgfile = args.cfgfile
     else:
@@ -355,13 +398,44 @@ def main():
     except ValueError as e:
         vlog.err("parse configuration file failed(%s): %s"%(cfgfile, e))
         sys.exit(lib.daemon.RESTART_EXIT_CODE)
+    except:
+        vlog.err("parse configuration unexpected error(%s)"%cfgfile)
+        sys.exit(lib.daemon.RESTART_EXIT_CODE)
     f.close()
+
+    if ('ID' not in cfg) or (type(cfg['ID']) is not int) or (cfg['ID'] not in ID_RANGE):
+        vlog.err("'ID' not found or invalid in cfgfile(%s)"%cfgfile)
+        sys.exit(lib.daemon.RESTART_EXIT_CODE)
+    site_id = cfg['ID']
+
+    if 'PROP_INTVL' in cfg:
+        if (type(cfg['PROP_INTVL']) != int) or (cfg['PROP_INTVL'] not in PROP_INTVL_RANGE):
+            vlog.warn("'PROP_INTVL' invalid in cfgfile")
+        else:
+            prop_intvl = cfg['PROP_INTVL'] * 1000
+    if 'CONN_REQ_TIMEOUT' in cfg:
+        if (type(cfg['CONN_REQ_TIMEOUT']) != int) or (cfg['CONN_REQ_TIMEOUT'] not in CONN_REQ_TIMEOUT_RANGE):
+            vlog.warn("'CONN_REQ_TIMEOUT' invalid in cfgfile")
+        else:
+            conn_req_timeout = cfg['CONN_REQ_TIMEOUT']
+    if 'SOFT_TIMEOUT' in cfg:
+        if (type(cfg['SOFT_TIMEOUT']) != int) or (cfg['SOFT_TIMEOUT'] not in SOFT_TIMEOUT_RANGE):
+            vlog.warn("'SOFT_TIMEOUT' invalid in cfgfile")
+        else:
+            soft_timeout = cfg['SOFT_TIMEOUT']
+    if 'HARD_TIMEOUT' in cfg:
+        if (type(cfg['HARD_TIMEOUT']) != int) or (cfg['HARD_TIMEOUT'] not in HARD_TIMEOUT_RANGE):
+            vlog.warn("'HARD_TIMEOUT' invalid in cfgfile")
+        else:
+            hard_timeout = cfg['HARD_TIMEOUT']
+
     error, unixctl_srvr = lib.unixctl.server.UnixctlServer.create(args.unixctl)
     if error:
         lib.util.ovs_fatal(error, "could not create unixctl server at %s"
                            % args.unixctl, vlog)
     lib.unixctl.command_register("exit", "", 0, 0, unixctl_exit, "aux_exit")
     lib.unixctl.command_register("log", "[arg ...]", 1, 2, unixctl_log, None)
+
     lib.daemon.daemonize_complete()
 
     poller = Poller()
@@ -383,7 +457,6 @@ def main():
                 vlog.info("flush sat_tun, init...")
 		os.system(FLUSH_SAT_TUN_CMD)
                 site_dic = {}
-                state_dic = {}
                 route_dic = {}
                 ctrl_pkt_list = []
                 conn_dic = {}
