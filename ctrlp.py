@@ -123,6 +123,8 @@ def rm_route(s, site):
         # find out if this dest network is reachable via any other site
         find = False
         for id in site_dic:
+            if id == site:
+                continue;
             if k in site_dic[id]['rn']:
                 find = True
                 if site_dic[id]['state'] == STATE_CONNECTED:
