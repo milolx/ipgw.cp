@@ -55,11 +55,13 @@ CONN_REQ_TIMEOUT_RANGE  = range(1, 31)
 SOFT_TIMEOUT = 30
 HARD_TIMEOUT = 600
 
-CONN_REQ_TIMEOUT = 5000            # in ms
+CONN_REQ_TIMEOUT = 5000         # in ms
+SITE_TIMEOUT = 45000            # in ms
 
 site_id = -1
 prop_intvl = PROP_INTERVAL
 conn_req_timeout = CONN_REQ_TIMEOUT
+site_timeout = SITE_TIMEOUT
 soft_timeout = SOFT_TIMEOUT
 hard_timeout = HARD_TIMEOUT
 
@@ -73,6 +75,9 @@ xid_dic = {}                    # xid_dic[xid] = remote_site_num, for recogonize
                                 #     service host and i
 local_route_set = set()
 
+
+def cur_timestamp():
+    return lib.timeval.msec()
 
 def enqueue_ctrl_pkt(ctrl):
     global ctrl_pkt_list 
@@ -149,7 +154,8 @@ def process_srvc_ctrl(rt):
         vlog.error("route table data is unable to be parsed")
         return
     if rt.site in site_dic:
-        # update routes in site_dic
+        # update timestamp & routes in site_dic
+        site_dic[rt.site]['timestamp'] = cur_timestamp()
         add_set = rt.dn - site_dic[rt.site]['rn'] - local_route_set
         rm_set = site_dic[rt.site]['rn'] - rt.dn - local_route_set
         if len(add_set) > 0 or len(rm_set) > 0:
@@ -162,6 +168,7 @@ def process_srvc_ctrl(rt):
         site_dic[rt.site]['rn'] = rt.dn
         add_route(rt.dn - local_route_set, rt.site)
         site_dic[rt.site]['state'] = STATE_NOT_CONNECTED
+        site_dic[rt.site]['timestamp'] = cur_timestamp()
 
 def req_conn(site):
     ctrl = ctrl_frm();
@@ -203,7 +210,7 @@ def lpm_route(ip_pkt):
                 xid_dic[xid] = s
 
                 conn_dic[s] = {}
-                conn_dic[s]['timestamp'] = lib.timeval.msec()
+                conn_dic[s]['timestamp'] = cur_timestamp()
                 conn_dic[s]['list'] = []
                 # save the first pkt and routing decision
                 conn_dic[s]['list'].append((ip_pkt,t))
@@ -330,6 +337,20 @@ def propergate_route():
 def chk_sites(now):
     global site_dic, conn_dic, xid_dic
 
+    for s in set(x for x in site_dic):
+        if now > site_dic[s]['timestamp'] + site_timeout:
+            vlog.warn("site info timeout, drop all route via site(site=%d)"%s)
+            rm_route(site_dic[s]['rn'], s)
+            if s in conn_dic:
+                del conn_dic[s]
+            for xid in set(x for x in xid_dic):
+                if xid_dic[xid] == s:
+                    del xid_dic[xid]
+            del site_dic[s]
+
+def chk_conn(now):
+    global site_dic, conn_dic, xid_dic
+
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + conn_req_timeout:
             vlog.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
@@ -340,15 +361,16 @@ def chk_sites(now):
                     del xid_dic[xid]
 
 def process_timer():
-    now = lib.timeval.msec()
+    now = cur_timestamp()
+    if now > process_timer.check_tmr_expire:
+        chk_sites(now)
+        chk_conn(now)
+        process_timer.check_tmr_expire = now + CHECK_INTERVAL
     if now > process_timer.prop_tmr_expire:
         propergate_route()
         process_timer.prop_tmr_expire = now + prop_intvl
-    if now > process_timer.conn_tmr_expire:
-        chk_sites(now)
-        process_timer.conn_tmr_expire = now + CHECK_INTERVAL
 process_timer.prop_tmr_expire = 0
-process_timer.conn_tmr_expire = 0
+process_timer.check_tmr_expire = 0
 
 def send_out_ququed_pkt(conn):
     global ctrl_pkt_list 
@@ -418,6 +440,11 @@ def main():
             vlog.warn("'CONN_REQ_TIMEOUT' invalid in cfgfile")
         else:
             conn_req_timeout = cfg['CONN_REQ_TIMEOUT'] * 1000
+    if 'SITE_TIMEOUT' in cfg:
+        if (type(cfg['SITE_TIMEOUT']) != int) or (cfg['SITE_TIMEOUT'] not in SITE_TIMEOUT_RANGE):
+            vlog.warn("'SITE_TIMEOUT' invalid in cfgfile")
+        else:
+            site_timeout = cfg['SITE_TIMEOUT'] * 1000
     if 'SOFT_TIMEOUT' in cfg:
         if (type(cfg['SOFT_TIMEOUT']) != int) or (cfg['SOFT_TIMEOUT'] not in SOFT_TIMEOUT_RANGE):
             vlog.warn("'SOFT_TIMEOUT' invalid in cfgfile")
