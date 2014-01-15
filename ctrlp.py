@@ -99,7 +99,7 @@ def rule_add(dn, site, idle, hard):
     enqueue_ctrl_pkt(ctrl)
 
 def rule_rm(dn):
-    vlog.info("remove forwarding rule: to %s/%d"%(dn[0], dn[1]))
+    vlog.info("remove forwarding rule: %s/%d"%(dn[0], dn[1]))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_RM
     ctrl.next = rule();
@@ -127,7 +127,7 @@ def rm_route(s, site):
                 if site_dic[id]['state'] == STATE_CONNECTED:
                     rule_add(k, id, soft_timeout, hard_timeout)
                 route_dic[k] = id
-                vlog.info("route %s/%d change from via %d to %d"%(k[0], k[1], site, id))
+                vlog.info("route %s/%d change from via %d to site(%d)"%(k[0], k[1], site, id))
                 break
         # if no other site reachable, just remove the static route
         # dp route will be removed when soft_to reach
@@ -250,7 +250,7 @@ def process_srvc_ack(a):
     xid = a.xid
     site = xid_dic[xid]
     if a.result == ack.SRVC_RSLT_ERR:
-        vlog.warn("conn to site(%d) failed" % site)
+        vlog.warn("req conn to site(%d) failed" % site)
         site_dic[site]['state'] = STATE_NOT_CONNECTED
     elif a.result == ack.SRVC_RSLT_OK:
         # make a set to avoid duplicate 't'(target network)
@@ -272,7 +272,7 @@ def process_srvc_notify(n):
         vlog.error("notify pkt is unable to be parsed")
         return
     if n.site not in site_dic:
-        vlog.warn("invalid site num(%d)", n.site)
+        vlog.warn("invalid site(%d)", n.site)
         return
     if n.type != nofify.SRVC_NOTIFY_LOGOUT and n.type != nofify.SRVC_NOTIFY_ERR:
         vlog.warn("unknown notify type(%d)", n.type)
@@ -304,9 +304,9 @@ def process_in(ctrl):
             elif s.type == service.SRVC_CTRL:
                 process_srvc_ctrl(s.next)
             else:
-                vlog.error("cant parse this kind of service pkt:%d" % s.type)
+                vlog.error("can't parse this kind of service pkt:%d" % s.type)
         else:
-            vlog.error("cant parse service payload")
+            vlog.error("can't parse service payload")
     else:
         vlog.error("should not recv this type:%d" % ctrl.type)
 
@@ -339,7 +339,7 @@ def chk_sites(now):
 
     for s in set(x for x in site_dic):
         if now > site_dic[s]['timestamp'] + site_timeout:
-            vlog.warn("site info timeout, drop all route via site(site=%d)"%s)
+            vlog.warn("site info timeout, drop all route via site(%d)"%s)
             rm_route(site_dic[s]['rn'], s)
             if s in conn_dic:
                 del conn_dic[s]
@@ -353,7 +353,7 @@ def chk_conn(now):
 
     for s in set(x for x in conn_dic):
         if now > conn_dic[s]['timestamp'] + conn_req_timeout:
-            vlog.warn("request timeout, drop(site=%d, %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
+            vlog.warn("request timeout, drop(site(%d), %d pkt(s))..."%(s, len(conn_dic[s]['list'])))
             site_dic[s]['state'] = STATE_NOT_CONNECTED
             del conn_dic[s]
             for xid in set(x for x in xid_dic):
