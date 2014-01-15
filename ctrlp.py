@@ -288,7 +288,7 @@ def process_srvc_notify(n):
         for xid in set(x for x in xid_dic):
             if xid_dic[xid] == n.site:
                 del xid_dic[xid]
-    rm_route(site_dic[n.site]['rn'], n.site)
+    rm_route(site_dic[n.site]['rn'] - local_route_set, n.site)
     del site_dic[n.site]
     vlog.info("site(%d) and related route removed", n.site)
 
@@ -341,7 +341,7 @@ def chk_sites(now):
     for s in set(x for x in site_dic):
         if now > site_dic[s]['timestamp'] + site_timeout:
             vlog.warn("site info timeout, drop all route via site(%d)"%s)
-            rm_route(site_dic[s]['rn'], s)
+            rm_route(site_dic[s]['rn'] - local_route_set, s)
             if s in conn_dic:
                 del conn_dic[s]
             for xid in set(x for x in xid_dic):
