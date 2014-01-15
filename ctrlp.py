@@ -81,7 +81,7 @@ def enqueue_ctrl_pkt(ctrl):
     ctrl_pkt_list.append(ctrl.pack())
 
 def rule_add(dn, site, idle, hard):
-    vlog.info("add forwarding rule: %s/%d to site %d, idle:%d hard:%d"%(dn[0], dn[1], site, idle, hard))
+    vlog.info("add forwarding rule: %s/%d via site %d, idle:%d hard:%d"%(dn[0], dn[1], site, idle, hard))
     ctrl = ctrl_frm();
     ctrl.type = ctrl_frm.IPGW_RULE_ADD
     ctrl.next = rule();
@@ -417,7 +417,7 @@ def main():
         if (type(cfg['CONN_REQ_TIMEOUT']) != int) or (cfg['CONN_REQ_TIMEOUT'] not in CONN_REQ_TIMEOUT_RANGE):
             vlog.warn("'CONN_REQ_TIMEOUT' invalid in cfgfile")
         else:
-            conn_req_timeout = cfg['CONN_REQ_TIMEOUT']
+            conn_req_timeout = cfg['CONN_REQ_TIMEOUT'] * 1000
     if 'SOFT_TIMEOUT' in cfg:
         if (type(cfg['SOFT_TIMEOUT']) != int) or (cfg['SOFT_TIMEOUT'] not in SOFT_TIMEOUT_RANGE):
             vlog.warn("'SOFT_TIMEOUT' invalid in cfgfile")
