@@ -48,6 +48,7 @@ PARSE_HDR           = 0
 PARSE_BODY          = 1
 ID_RANGE            = range(0, 65536)
 PROP_INTVL_RANGE    = range(5, 121)
+SITE_TIMEOUT_RANGE  = range(10, 1201)
 SOFT_TIMEOUT_RANGE  = range(2, 3601)
 HARD_TIMEOUT_RANGE  = range(0, 86401)   # 0 means permanent, max=24h
 CONN_REQ_TIMEOUT_RANGE  = range(1, 31)
