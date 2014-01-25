@@ -62,7 +62,7 @@ class service(packet_base):
              = struct.unpack('!BBH', raw[:service.MIN_LEN])
 
         if self.ver != service.VER:
-            self.msg('(service parse) warning version %u not exp(%u)' % (self.v, service.VER))
+            self.msg('(service parse) warning version %u not exp(%u)' % (self.ver, service.VER))
             return
 
         # At this point, we are reasonably certain that we have an service
