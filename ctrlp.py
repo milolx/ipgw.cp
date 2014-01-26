@@ -154,7 +154,7 @@ def process_srvc_ctrl(rt):
     global site_dic
 
     if not isinstance(rt, packet_base) or (isinstance(rt, packet_base) and not rt.parsed):
-        vlog.error("route table data is unable to be parsed")
+        vlog.err("route table data is unable to be parsed")
         return
     if rt.site in site_dic:
         # update timestamp & routes in site_dic
@@ -225,18 +225,18 @@ def lpm_route(ip_pkt):
                 # just place a rule in data path
                 rule_add(t, s, soft_timeout, hard_timeout)
             else:
-                vlog.error("unknown site state")
+                vlog.err("unknown site state")
             # routing dicision has made, return
             return
 
 def process_packet_in(inp):
     if not isinstance(inp, packet_base) or (isinstance(inp, packet_base) and not inp.parsed):
-        vlog.error("pkt_in packet is unable to be parsed")
+        vlog.err("pkt_in packet is unable to be parsed")
         return
     #print hexdump(inp.payload)
     ip_pkt = ipv4(inp.payload)
     if not ip_pkt.parsed:
-        vlog.error("pkt_in data is not a ipv4 packet")
+        vlog.err("pkt_in data is not a ipv4 packet")
         return
     lpm_route(ip_pkt)
 
@@ -244,7 +244,7 @@ def process_srvc_ack(a):
     global site_dic, conn_dic, xid_dic
 
     if not isinstance(a, packet_base) or (isinstance(a, packet_base) and not a.parsed):
-        vlog.error("ack pkt is unable to be parsed")
+        vlog.err("ack pkt is unable to be parsed")
         return
     if not a.xid in xid_dic:
         vlog.err("xid is not expected(%d)" % a.xid)
@@ -263,7 +263,7 @@ def process_srvc_ack(a):
             rule_add(t, site, soft_timeout, hard_timeout)
         site_dic[site]['state'] = STATE_CONNECTED
     else:
-        vlog.error("ack result's unknown(%d)" % a.result)
+        vlog.err("ack result's unknown(%d)" % a.result)
         site_dic[site]['state'] = STATE_NOT_CONNECTED
     del xid_dic[xid]
     del conn_dic[site]
@@ -272,7 +272,7 @@ def process_srvc_notify(n):
     global site_dic
 
     if not isinstance(n, packet_base) or (isinstance(n, packet_base) and not n.parsed):
-        vlog.error("notify pkt is unable to be parsed")
+        vlog.err("notify pkt is unable to be parsed")
         return
     if n.site not in site_dic:
         vlog.warn("invalid site(%d)", n.site)
@@ -307,11 +307,11 @@ def process_in(ctrl):
             elif s.type == service.SRVC_CTRL:
                 process_srvc_ctrl(s.next)
             else:
-                vlog.error("can't parse this kind of service pkt:%d" % s.type)
+                vlog.err("can't parse this kind of service pkt:%d" % s.type)
         else:
-            vlog.error("can't parse service payload")
+            vlog.err("can't parse service payload")
     else:
-        vlog.error("should not recv this type:%d" % ctrl.type)
+        vlog.err("should not recv this type:%d" % ctrl.type)
 
 def get_local_route_set():
     global local_route_set
